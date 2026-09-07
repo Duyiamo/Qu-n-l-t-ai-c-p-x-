@@ -59,7 +59,7 @@ st.set_page_config(
 
 st.title("🌾 Hệ thống Thu thập & Quản lý Hiện trạng Đất đai Cấp Xã")
 st.markdown(
-    "Ứng dụng hỗ trợ ghi nhận vị trí và vẽ ranh giới canh tác của hộ dân, kết"
+    "Ứng dụng hỗ trợ ghi nhận vị trí và ranh giới canh tác của hộ dân, kết"
     " xuất báo cáo chuyên nghiệp."
 )
 
@@ -116,9 +116,8 @@ with tab1:
     st.markdown("---")
     st.markdown(
         "**Xác định vị trí trên bản đồ vệ tinh:** Bạn có thể **chấm 1 điểm"
-        " (Marker)** vào giữa thửa đất hoặc dùng công cụ **vẽ đa giác"
-        " (Polygon)** trên thanh công cụ của bản đồ để khoanh trọn ranh giới"
-        " khu đất canh tác."
+        " (Marker)** vào giữa thửa đất hoặc dùng công cụ **vẽ đa giác/hình chữ"
+        " nhật (Polygon/Rectangle)** để khoanh trọn ranh giới khu đất."
     )
 
     m = folium.Map(location=[14.3305, 108.6472], zoom_start=15)
@@ -144,6 +143,7 @@ with tab1:
         locate_options={"maxZoom": 18},
     ).add_to(m)
 
+    # ĐÃ BẬT LẠI CẢ MARKER VÀ POLYGON ĐỂ NGƯỜI DÂN LINH HOẠT SỬ DỤNG
     draw = Draw(
         export=False,
         draw_options={
@@ -172,6 +172,7 @@ with tab1:
         geo_coords = None
 
         if output:
+          # 1. Kiểm tra xem người dùng có vẽ hình (Polygon/Rectangle/Marker qua tool) không
           if output.get("all_drawings") and len(output["all_drawings"]) > 0:
             last_shape = output["all_drawings"][-1]
             geometry = last_shape.get("geometry")
@@ -180,15 +181,17 @@ with tab1:
               coords = geometry["coordinates"]
               geo_coords = json.dumps(coords)
 
-              # CẬP NHẬT QUAN TRỌNG: Tự động tính tâm (Centroid) chính xác của đa giác
               if geo_type == "Polygon" and len(coords) > 0 and len(coords[0]) > 0:
                 pts = coords[0]
                 lon = sum(pt[0] for pt in pts) / len(pts)
                 lat = sum(pt[1] for pt in pts) / len(pts)
+              elif geo_type == "Point" and len(coords) >= 2:
+                lon = coords[0]
+                lat = coords[1]
 
+          # 2. Nếu không bắt được từ all_drawings, kiểm tra xem người dùng có click trực tiếp lên bản đồ không
           if (
-              not lat
-              and not lon
+              (not lat or not lon)
               and output.get("last_clicked")
               and output["last_clicked"]
           ):
@@ -197,11 +200,16 @@ with tab1:
             geo_type = "Point"
             geo_coords = json.dumps([[lon, lat]])
 
-        conn = sqlite3.connect(DB_FILE)
-        cursor = conn.cursor()
+        if not lat or not lon:
+          st.error(
+              "⚠️ Bạn chưa chấm điểm hoặc vẽ ranh giới thửa đất trên bản đồ! Vui"
+              " lòng chọn vị trí trên bản đồ trước khi gửi."
+          )
+        else:
+          conn = sqlite3.connect(DB_FILE)
+          cursor = conn.cursor()
 
-        is_duplicate = False
-        if lat is not None and lon is not None:
+          is_duplicate = False
           cursor.execute(
               """
                     SELECT COUNT(*) FROM thia_dat 
@@ -213,52 +221,45 @@ with tab1:
           if count > 0:
             is_duplicate = True
 
-        if is_duplicate:
-          st.error(
-              "⚠️ Vị trí thửa đất này đã được kê khai vào hệ thống! Xin vui"
-              " lòng nhập thửa đất khác và cập nhật vị trí khác trên bản đồ."
-          )
-        else:
-          ngay_hien_tai = datetime.now().strftime("%Y-%m-%d")
-          cursor.execute(
-              """
-                    INSERT INTO thia_dat (ho_ten, sdt, dia_chi_thuong_tru, so_to, so_thua, dia_chi_thua_dat, dien_tich_khai_bao, nguon_goc, hien_trang, hien_trang_chi_tiet, tinh_trang_so, ghi_chu, lat, lon, geo_type, geo_coords, ngay_tao)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-              (
-                  ho_ten,
-                  sdt,
-                  dia_chi_thuong_tru,
-                  so_to,
-                  so_thua,
-                  dia_chi_thua_dat,
-                  dien_tich,
-                  nguon_goc,
-                  hien_trang,
-                  hien_trang_chi_tiet,
-                  tinh_trang_so,
-                  ghi_chu,
-                  lat,
-                  lon,
-                  geo_type,
-                  geo_coords,
-                  ngay_hien_tai,
-              ),
-          )
-          conn.commit()
-
-          if lat and lon:
-            st.success(
-                f"Cảm ơn ông/bà **{ho_ten}**! Dữ liệu ranh giới/vị trí đã gửi"
-                f" về hệ thống thành công."
+          if is_duplicate:
+            st.error(
+                "⚠️ Vị trí thửa đất này đã được kê khai vào hệ thống! Xin vui"
+                " lòng chọn vị trí khác trên bản đồ."
             )
           else:
-            st.warning(
-                f"Cảm ơn ông/bà **{ho_ten}**! Đã lưu thông tin (Chưa thấy bạn"
-                " chấm điểm hoặc vẽ ranh giới trên bản đồ)."
+            ngay_hien_tai = datetime.now().strftime("%Y-%m-%d")
+            cursor.execute(
+                """
+                        INSERT INTO thia_dat (ho_ten, sdt, dia_chi_thuong_tru, so_to, so_thua, dia_chi_thua_dat, dien_tich_khai_bao, nguon_goc, hien_trang, hien_trang_chi_tiet, tinh_trang_so, ghi_chu, lat, lon, geo_type, geo_coords, ngay_tao)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                (
+                    ho_ten,
+                    sdt,
+                    dia_chi_thuong_tru,
+                    so_to,
+                    so_thua,
+                    dia_chi_thua_dat,
+                    dien_tich,
+                    nguon_goc,
+                    hien_trang,
+                    hien_trang_chi_tiet,
+                    tinh_trang_so,
+                    ghi_chu,
+                    lat,
+                    lon,
+                    geo_type,
+                    geo_coords,
+                    ngay_hien_tai,
+                ),
+            )
+            conn.commit()
+            st.success(
+                f"Cảm ơn ông/bà **{ho_ten}**! Thông tin thửa đất đã được gửi"
+                " về hệ thống thành công."
             )
 
-        conn.close()
+          conn.close()
 
 with tab2:
   st.header("Khu vực Quản trị dành cho Cán bộ địa chính")
@@ -353,6 +354,7 @@ with tab2:
                 control=True,
             ).add_to(m_admin)
 
+            # Nếu là Polygon thì hiển thị vùng ranh giới
             if (
                 row_chon["geo_type"] == "Polygon"
                 and pd.notnull(row_chon["geo_coords"])
@@ -373,6 +375,7 @@ with tab2:
               except Exception:
                 pass
 
+            # Hiển thị Marker tại vị trí tâm hoặc điểm chấm
             folium.Marker(
                 [lat_Check, lon_Check],
                 popup=(
@@ -386,10 +389,7 @@ with tab2:
 
             st_folium(m_admin, width="100%", height=400, key=f"map_{selected_id}")
           else:
-            st.warning(
-                "Thửa đất này chưa có thông tin tọa độ ghim trên bản đồ từ người"
-                " dân."
-            )
+            st.warning("Thửa đất này chưa có thông tin vị trí trên bản đồ.")
 
       st.markdown("### Xuất dữ liệu phục vụ nội nghiệp")
 
