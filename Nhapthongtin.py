@@ -23,6 +23,7 @@ def init_db():
             ho_ten TEXT,
             sdt TEXT,
             dia_chi_thuong_tru TEXT,
+            thon_lang TEXT,
             so_to TEXT,
             so_thua TEXT,
             dia_chi_thua_dat TEXT,
@@ -39,6 +40,10 @@ def init_db():
             ngay_tao TEXT
         )
     """)
+  try:
+    cursor.execute("ALTER TABLE thia_dat ADD COLUMN thon_lang TEXT;")
+  except sqlite3.OperationalError:
+    pass
   try:
     cursor.execute("ALTER TABLE thia_dat ADD COLUMN geo_type TEXT;")
   except sqlite3.OperationalError:
@@ -59,8 +64,8 @@ st.set_page_config(
 
 st.title("🌾 Hệ thống Thu thập & Quản lý Hiện trạng Đất đai Cấp Xã")
 st.markdown(
-    "Ứng dụng hỗ trợ ghi nhận vị trí và ranh giới canh tác của hộ dân, kết"
-    " xuất báo cáo chuyên nghiệp."
+    "Ứng dụng hỗ trợ ghi nhận vị trí và ranh giới canh tác của hộ dân theo"
+    " từng thôn, kết xuất báo cáo chuyên nghiệp."
 )
 
 tab1, tab2 = st.tabs(
@@ -68,7 +73,7 @@ tab1, tab2 = st.tabs(
 )
 
 with tab1:
-  st.header("Nhập thông tin và xác định vị trí / ranh giới thửa đất")
+  st.header("Nhập thông tin và vẽ ranh giới thửa đất trên bản đồ")
 
   with st.form("form_khai_bao"):
     col1, col2 = st.columns(2)
@@ -78,13 +83,17 @@ with tab1:
       dia_chi_thuong_tru = st.text_input(
           "Địa chỉ thường trú (Thôn/Xóm, Xã...)"
       )
+      # BỔ SUNG TRƯỜNG THÔN / LÀNG
+      thon_lang = st.text_input(
+          "Thôn / Làng tọa lạc thửa đất * (Ví dụ: Làng Hnáp, Thôn 1...)"
+      )
       so_to = st.text_input("Số tờ bản đồ (nếu biết)")
       so_thua = st.text_input("Số thửa đất (nếu biết)")
-      dia_chi_thua_dat = st.text_input(
-          "Địa chỉ / Khu vực tọa lạc thửa đất (Ví dụ: Thôn 2, Khu Đồng Lớn...)"
-      )
 
     with col2:
+      dia_chi_thua_dat = st.text_input(
+          "Mô tả thêm khu vực thửa đất (Ví dụ: Khu Đồng Lớn, giáp suối...)"
+      )
       dien_tich = st.number_input(
           "Diện tích tự khai báo (m²) *", min_value=0.0, value=0.0, step=10.0
       )
@@ -143,7 +152,6 @@ with tab1:
         locate_options={"maxZoom": 18},
     ).add_to(m)
 
-    # ĐÃ BẬT LẠI CẢ MARKER VÀ POLYGON ĐỂ NGƯỜI DÂN LINH HOẠT SỬ DỤNG
     draw = Draw(
         export=False,
         draw_options={
@@ -164,15 +172,17 @@ with tab1:
     )
 
     if submit_button:
-      if not ho_ten:
-        st.error("Vui lòng nhập họ và tên chủ sử dụng!")
+      if not ho_ten or not thon_lang:
+        st.error(
+            "Vui lòng nhập đầy đủ [Họ và tên] và [Thôn / Làng tọa lạc thửa"
+            " đất]!"
+        )
       else:
         lat, lon = None, None
         geo_type = None
         geo_coords = None
 
         if output:
-          # 1. Kiểm tra xem người dùng có vẽ hình (Polygon/Rectangle/Marker qua tool) không
           if output.get("all_drawings") and len(output["all_drawings"]) > 0:
             last_shape = output["all_drawings"][-1]
             geometry = last_shape.get("geometry")
@@ -189,7 +199,6 @@ with tab1:
                 lon = coords[0]
                 lat = coords[1]
 
-          # 2. Nếu không bắt được từ all_drawings, kiểm tra xem người dùng có click trực tiếp lên bản đồ không
           if (
               (not lat or not lon)
               and output.get("last_clicked")
@@ -230,13 +239,14 @@ with tab1:
             ngay_hien_tai = datetime.now().strftime("%Y-%m-%d")
             cursor.execute(
                 """
-                        INSERT INTO thia_dat (ho_ten, sdt, dia_chi_thuong_tru, so_to, so_thua, dia_chi_thua_dat, dien_tich_khai_bao, nguon_goc, hien_trang, hien_trang_chi_tiet, tinh_trang_so, ghi_chu, lat, lon, geo_type, geo_coords, ngay_tao)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        INSERT INTO thia_dat (ho_ten, sdt, dia_chi_thuong_tru, thon_lang, so_to, so_thua, dia_chi_thua_dat, dien_tich_khai_bao, nguon_goc, hien_trang, hien_trang_chi_tiet, tinh_trang_so, ghi_chu, lat, lon, geo_type, geo_coords, ngay_tao)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                 (
                     ho_ten,
                     sdt,
                     dia_chi_thuong_tru,
+                    thon_lang,
                     so_to,
                     so_thua,
                     dia_chi_thua_dat,
@@ -255,8 +265,8 @@ with tab1:
             )
             conn.commit()
             st.success(
-                f"Cảm ơn ông/bà **{ho_ten}**! Thông tin thửa đất đã được gửi"
-                " về hệ thống thành công."
+                f"Cảm ơn ông/bà **{ho_ten}**! Thông tin thửa đất tại **{thon_lang}**"
+                " đã được gửi về hệ thống thành công."
             )
 
           conn.close()
@@ -284,16 +294,28 @@ with tab2:
           value=f"{len(df)} thửa đất",
       )
 
-      st.markdown("### Bộ lọc dữ liệu quản lý")
-      danh_sach_ngay = ["Tất cả các ngày"] + sorted(
-          df["ngay_tao"].dropna().unique().tolist()
-      )
-      chon_ngay = st.selectbox("Lọc danh sách theo ngày kê khai:", danh_sach_ngay)
+      st.markdown("### Bộ lọc dữ liệu quản lý theo không gian hành chính")
 
+      # BỔ SUNG BỘ LỌC THEO THÔN / LÀNG VÀ NGÀY
+      col_f1, col_f2 = st.columns(2)
+      with col_f1:
+        danh_sach_thon = ["Tất cả các Thôn/Làng"] + sorted(
+            df["thon_lang"].dropna().unique().tolist()
+        )
+        chon_thon = st.selectbox("Lọc theo Thôn / Làng:", danh_sach_thon)
+
+      with col_f2:
+        danh_sach_ngay = ["Tất cả các ngày"] + sorted(
+            df["ngay_tao"].dropna().unique().tolist()
+        )
+        chon_ngay = st.selectbox("Lọc theo ngày kê khai:", danh_sach_ngay)
+
+      # Áp dụng bộ lọc kép
+      df_hien_thi = df.copy()
+      if chon_thon != "Tất cả các Thôn/Làng":
+        df_hien_thi = df_hien_thi[df_hien_thi["thon_lang"] == chon_thon]
       if chon_ngay != "Tất cả các ngày":
-        df_hien_thi = df[df["ngay_tao"] == chon_ngay]
-      else:
-        df_hien_thi = df
+        df_hien_thi = df_hien_thi[df_hien_thi["ngay_tao"] == chon_ngay]
 
       st.markdown(f"Đang hiển thị **{len(df_hien_thi)}** bản ghi.")
 
@@ -302,16 +324,14 @@ with tab2:
               "id",
               "ho_ten",
               "sdt",
-              "dia_chi_thuong_tru",
+              "thon_lang",
               "so_to",
               "so_thua",
               "dia_chi_thua_dat",
               "dien_tich_khai_bao",
               "nguon_goc",
               "hien_trang",
-              "hien_trang_chi_tiet",
               "tinh_trang_so",
-              "geo_type",
               "ngay_tao",
           ]],
           use_container_width=True,
@@ -322,13 +342,13 @@ with tab2:
         options_thua = []
         for _, r in df_hien_thi.iterrows():
           label_item = (
-              f"ID: {r['id']} | Chủ hộ: {r['ho_ten']} | Thửa: {r['so_thua']}"
-              f" - Tờ: {r['so_to']} (Khu vực: {r['dia_chi_thua_dat']})"
+              f"ID: {r['id']} | Thôn: {r['thon_lang']} | Chủ hộ:"
+              f" {r['ho_ten']} | Thửa: {r['so_thua']} - Tờ: {r['so_to']}"
           )
           options_thua.append((label_item, r["id"]))
 
         chon_lua = st.selectbox(
-            "Chọn chủ sử dụng / thửa đất cần kiểm tra trên bản đồ:",
+            "Chọn thửa đất cần kiểm tra trên bản đồ:",
             options_thua,
             format_func=lambda x: x[0],
         )
@@ -354,7 +374,6 @@ with tab2:
                 control=True,
             ).add_to(m_admin)
 
-            # Nếu là Polygon thì hiển thị vùng ranh giới
             if (
                 row_chon["geo_type"] == "Polygon"
                 and pd.notnull(row_chon["geo_coords"])
@@ -370,17 +389,16 @@ with tab2:
                       fill=True,
                       fill_color="blue",
                       fill_opacity=0.3,
-                      popup=f"<b>{row_chon['ho_ten']}</b><br>Diện tích: {row_chon['dien_tich_khai_bao']} m²",
+                      popup=f"<b>{row_chon['ho_ten']}</b><br>Thôn: {row_chon['thon_lang']}<br>Diện tích: {row_chon['dien_tich_khai_bao']} m²",
                   ).add_to(m_admin)
               except Exception:
                 pass
 
-            # Hiển thị Marker tại vị trí tâm hoặc điểm chấm
             folium.Marker(
                 [lat_Check, lon_Check],
                 popup=(
-                    f"<b>Chủ hộ: {row_chon['ho_ten']}</b><br>SĐT:"
-                    f" {row_chon['sdt']}<br>Diện tích:"
+                    f"<b>Chủ hộ: {row_chon['ho_ten']}</b><br>Thôn:"
+                    f" {row_chon['thon_lang']}<br>Diện tích:"
                     f" {row_chon['dien_tich_khai_bao']} m²<br>Hiện trạng:"
                     f" {row_chon['hien_trang']} ({row_chon['hien_trang_chi_tiet']})"
                 ),
@@ -402,7 +420,7 @@ with tab2:
           ws.title = "Danh sách hiện trạng đất"
           ws.sheet_view.showGridLines = True
 
-          ws.merge_cells("A1:P1")
+          ws.merge_cells("A1:Q1")
           ws["A1"] = (
               "DANH SÁCH TỔNG HỢP HIỆN TRẠNG CANH TÁC ĐẤT ĐAI CẤP XÃ"
           ).upper()
@@ -414,6 +432,7 @@ with tab2:
               "Họ và tên chủ sử dụng",
               "Số điện thoại",
               "Địa chỉ thường trú",
+              "Thôn / Làng",
               "Số tờ",
               "Số thửa",
               "Địa chỉ thửa đất",
@@ -469,6 +488,7 @@ with tab2:
                 str(row["dia_chi_thuong_tru"])
                 if pd.notnull(row["dia_chi_thuong_tru"])
                 else "",
+                str(row["thon_lang"]) if pd.notnull(row["thon_lang"]) else "",
                 str(row["so_to"]) if pd.notnull(row["so_to"]) else "",
                 str(row["so_thua"]) if pd.notnull(row["so_thua"]) else "",
                 str(row["dia_chi_thua_dat"])
@@ -493,14 +513,14 @@ with tab2:
               cell.font = data_font
               cell.border = thin_border
 
-              if col_idx in [1, 5, 6, 13, 15]:
+              if col_idx in [1, 6, 7, 14, 16]:
                 cell.alignment = Alignment(
                     horizontal="center", vertical="center"
                 )
-              elif col_idx == 8:
+              elif col_idx == 9:
                 cell.alignment = Alignment(horizontal="right", vertical="center")
                 cell.number_format = "#,##0"
-              elif col_idx == 14:
+              elif col_idx == 15:
                 cell.alignment = Alignment(
                     horizontal="center", vertical="center"
                 )
@@ -523,7 +543,7 @@ with tab2:
                   max_len = len(val_str)
             ws.column_dimensions[col_letter].width = max(max_len + 4, 12)
 
-          local_file_name = "Bao_cao_hien_trang_dat_dai.xlsx"
+          local_file_name = "Bao_cao_hien_trang_dat_dai_theo_thon.xlsx"
           wb.save(local_file_name)
 
           with open(local_file_name, "rb") as f:
@@ -541,22 +561,27 @@ with tab2:
           kml_content = """<?xml version="1.0" encoding="UTF-8"?>
 <kml xmlns="http://www.opengis.net/kml/2.2">
   <Document>
-    <name>Danh sách Thửa đất và Ranh giới Kê khai</name>
+    <name>Danh sách Thửa đất theo Thôn</name>
 """
           for _, row in df_hien_thi.iterrows():
             ho_ten_Val = str(row["ho_ten"] or "").strip()
+            thon_val = str(row["thon_lang"] or "").strip()
             so_to_val = str(row["so_to"] or "").strip()
             so_thua_val = str(row["so_thua"] or "").strip()
 
             if so_to_val != "" and so_thua_val != "":
-              name = f"{ho_ten_Val} - Thửa: {so_thua_val}, Tờ: {so_to_val}"
+              name = (
+                  f"[{thon_val}] {ho_ten_Val} - Thửa: {so_thua_val}, Tờ:"
+                  f" {so_to_val}"
+              )
             else:
-              name = ho_ten_Val
+              name = f"[{thon_val}] {ho_ten_Val}"
 
             desc = (
-                f"Chủ sử dụng: {ho_ten_Val}<br/>SĐT: {row['sdt']}<br/>Diện"
-                f" tích khai báo: {row['dien_tich_khai_bao']} m²<br/>Hiện"
-                f" trạng: {row['hien_trang']} ({row['hien_trang_chi_tiet']})"
+                f"Thôn: {thon_val}<br/>Chủ sử dụng:"
+                f" {ho_ten_Val}<br/>SĐT: {row['sdt']}<br/>Diện tích khai"
+                f" báo: {row['dien_tich_khai_bao']} m²<br/>Hiện trạng:"
+                f" {row['hien_trang']} ({row['hien_trang_chi_tiet']})"
             )
 
             geo_type = row["geo_type"]
@@ -570,7 +595,7 @@ with tab2:
                       [f"{pt[0]},{pt[1]},0" for pt in coords_list[0]]
                   )
                   kml_content += f"""    <Placemark>
-      <name><![CDATA[{name} (Vùng ranh giới)]]></name>
+      <name><![CDATA[{name}]]></name>
       <description><![CDATA[{desc}]]></description>
       <Polygon>
         <outerBoundaryIs>
@@ -599,7 +624,7 @@ with tab2:
           st.download_button(
               label="📥 Tải file KML mở Google Earth",
               data=kml_content.encode("utf-8"),
-              file_name="hien_trang_dat_dai_vung.kml",
+              file_name="hien_trang_dat_dai_theo_thon.kml",
               mime="application/vnd.google-earth.kml+xml",
           )
 
