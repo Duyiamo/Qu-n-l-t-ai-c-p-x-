@@ -16,7 +16,6 @@ DB_FILE = "quan_ly_dat_dai.db"
 def init_db():
   conn = sqlite3.connect(DB_FILE)
   cursor = conn.cursor()
-  # Bổ sung cột dia_chi_thuong_tru và dia_chi_thua_dat
   cursor.execute("""
         CREATE TABLE IF NOT EXISTS thia_dat (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -75,17 +74,14 @@ with tab1:
       )
 
     with col2:
+      # Yêu cầu 3: Diện tích để trống, không để mặc định 1000
       dien_tich = st.number_input(
-          "Diện tích tự khai báo (m²)", min_value=0.0, value=1000.0, step=50.0
+          "Diện tích tự khai báo (m²) *", min_value=0.0, value=0.0, step=10.0
       )
-      nguon_goc = st.selectbox(
-          "Nguồn gốc sử dụng đất", [
-              "Đất giao theo NĐ 64/CP",
-              "Đất nhận chuyển nhượng",
-              "Đất khai hoang / lấn chiếm",
-              "Đất công ích (5%)",
-              "Khác",
-          ],
+      # Yêu cầu 1: Nguồn gốc để người dân tự nhập chữ
+      nguon_goc = st.text_input(
+          "Nguồn gốc sử dụng đất tự kê khai (Ví dụ: Khai hoang, Nhận chuyển"
+          " nhượng...)"
       )
       hien_trang = st.selectbox(
           "Nhóm hiện trạng sử dụng đất *", [
@@ -110,12 +106,27 @@ with tab1:
 
     st.markdown("---")
     st.markdown(
-        "**Xác định vị trí trên bản đồ:** Bạn có thể bấm vào nút định vị góc"
-        " trên bản đồ để lấy vị trí hiện tại, hoặc tự di chuyển bản đồ đến"
-        " thửa đất nếu làm việc tại nhà."
+        "**Xác định vị trí trên bản đồ:** Bạn có thể bấm vào nút định vị GPS"
+        " góc trên bản đồ để lấy vị trí hiện tại, hoặc tự di chuyển bản đồ đến"
+        " thửa đất. (Có thể chuyển sang chế độ **Vệ tinh** ở góc trái bản đồ"
+        " để dễ quan sát)."
     )
 
+    # Yêu cầu 2: Khởi tạo bản đồ mặc định có tích hợp lớp bản đồ vệ tinh (Google Satellite)
     m = folium.Map(location=[14.3305, 108.6472], zoom_start=15)
+
+    # Thêm tile layer bản đồ vệ tinh
+    folium.TileLayer(
+        tiles="https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
+        attr="Google Satellite",
+        name="Bản đồ Vệ tinh",
+        subdomains=["mt0", "mt1", "mt2", "mt3"],
+        overlay=True,
+        control=True,
+    ).add_to(m)
+
+    folium.LayerControl().add_to(m)
+
     LocateControl(
         auto_start=False,
         position="topleft",
@@ -267,7 +278,7 @@ with tab2:
             "Số thửa",
             "Địa chỉ thửa đất",
             "Diện tích (m²)",
-            "Nguồn gốc đất",
+            "Nguồn gốc tự kê khai",
             "Nhóm hiện trạng",
             "Tên cây trồng cụ thể",
             "Tình trạng Giấy chứng nhận",
@@ -326,7 +337,7 @@ with tab2:
               if pd.notnull(row["dia_chi_thua_dat"])
               else "",
               row["dien_tich_khai_bao"],
-              row["nguon_goc"],
+              str(row["nguon_goc"]) if pd.notnull(row["nguon_goc"]) else "",
               row["hien_trang"],
               row["hien_trang_chi_tiet"]
               if pd.notnull(row["hien_trang_chi_tiet"])
