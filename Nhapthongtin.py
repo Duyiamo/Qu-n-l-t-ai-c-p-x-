@@ -39,6 +39,16 @@ def init_db():
             ngay_tao TEXT
         )
     """)
+  # Tự động bổ sung cột mới nếu bảng cũ chưa có để tránh lỗi xung đột cấu trúc
+  try:
+    cursor.execute("ALTER TABLE thia_dat ADD COLUMN geo_type TEXT;")
+  except sqlite3.OperationalError:
+    pass
+  try:
+    cursor.execute("ALTER TABLE thia_dat ADD COLUMN geo_coords TEXT;")
+  except sqlite3.OperationalError:
+    pass
+
   conn.commit()
   conn.close()
 
@@ -136,15 +146,14 @@ with tab1:
         locate_options={"maxZoom": 18},
     ).add_to(m)
 
-    # Bật tính năng vẽ Marker và Polygon trên bản đồ
     draw = Draw(
         export=False,
         draw_options={
             "polyline": False,
-            "polygon": True,  # Cho phép vẽ ranh giới vùng
-            "rectangle": True,  # Cho phép vẽ hình chữ nhật
+            "polygon": True,
+            "rectangle": True,
             "circle": False,
-            "marker": True,  # Cho phép chấm điểm
+            "marker": True,
             "circlemarker": False,
         },
     )
@@ -165,21 +174,18 @@ with tab1:
         geo_coords = None
 
         if output:
-          # Kiểm tra nếu người dùng vẽ đa giác/hình chữ nhật
           if output.get("all_drawings") and len(output["all_drawings"]) > 0:
             last_shape = output["all_drawings"][-1]
             geometry = last_shape.get("geometry")
             if geometry:
-              geo_type = geometry["type"]  # 'Polygon' hoặc 'Point' v.v.
+              geo_type = geometry["type"]
               coords = geometry["coordinates"]
               geo_coords = json.dumps(coords)
 
-              # Nếu là Polygon, lấy tọa độ điểm đầu tiên làm tâm đại diện
               if geo_type == "Polygon" and len(coords) > 0 and len(coords[0]) > 0:
                 lon = coords[0][0][0]
                 lat = coords[0][0][1]
 
-          # Nếu không vẽ vùng mà chỉ click chấm điểm thông thường
           if (
               not lat
               and not lon
@@ -481,11 +487,9 @@ with tab2:
             geo_type = row["geo_type"]
             geo_coords_str = row["geo_coords"]
 
-            # Nếu người dân vẽ đa giác (Polygon)
             if geo_type == "Polygon" and pd.notnull(geo_coords_str):
               try:
                 coords_list = json.loads(geo_coords_str)
-                # coords_list[0] là danh sách các điểm [lon, lat, alt] của polygon
                 if len(coords_list) > 0:
                   kml_coords_flat = " ".join(
                       [f"{pt[0]},{pt[1]},0" for pt in coords_list[0]]
@@ -505,7 +509,6 @@ with tab2:
               except Exception:
                 pass
 
-            # Nếu người dân chỉ chấm điểm (Point) hoặc dữ liệu cũ
             elif pd.notnull(row["lat"]) and pd.notnull(row["lon"]):
               kml_content += f"""    <Placemark>
       <name><![CDATA[{name}]]></name>
