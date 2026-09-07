@@ -39,7 +39,6 @@ def init_db():
             ngay_tao TEXT
         )
     """)
-  # Tự động bổ sung cột mới nếu bảng cũ chưa có để tránh lỗi xung đột cấu trúc
   try:
     cursor.execute("ALTER TABLE thia_dat ADD COLUMN geo_type TEXT;")
   except sqlite3.OperationalError:
@@ -48,7 +47,6 @@ def init_db():
     cursor.execute("ALTER TABLE thia_dat ADD COLUMN geo_coords TEXT;")
   except sqlite3.OperationalError:
     pass
-
   conn.commit()
   conn.close()
 
@@ -315,6 +313,86 @@ with tab2:
           ]],
           use_container_width=True,
       )
+
+      # --- TÍNH NĂNG MỚI: KIỂM TRA NHANH TỪNG THỬA ĐẤT TRÊN BẢN ĐỒ ---
+      st.markdown("### 🔍 Kiểm tra nhanh vị trí / ranh giới từng thửa đất")
+      if not df_hien_thi.empty:
+        # Tạo danh sách lựa chọn dạng "Tên chủ hộ - Thửa... Tờ... (Ngày...)"
+        options_thua = []
+        for _, r in df_hien_thi.iterrows():
+          label_item = (
+              f"ID: {r['id']} | Chủ hộ: {r['ho_ten']} | Thửa: {r['so_thua']}"
+              f" - Tờ: {r['so_to']} (Khu vực: {r['dia_chi_thua_dat']})"
+          )
+          options_thua.append((label_item, r["id"]))
+
+        chon_lua = st.selectbox(
+            "Chọn chủ sử dụng / thửa đất cần kiểm tra trên bản đồ:",
+            options_thua,
+            format_func=lambda x: x[0],
+        )
+
+        if chon_lua:
+          selected_id = chon_lua[1]
+          row_chon = df_hien_thi[df_hien_thi["id"] == selected_id].iloc[0]
+
+          lat_Check = row_chon["lat"]
+          lon_Check = row_chon["lon"]
+
+          if pd.notnull(lat_Check) and pd.notnull(lon_Check):
+            m_admin = folium.Map(
+                location=[lat_Check, lon_Check], zoom_start=18
+            )
+
+            folium.TileLayer(
+                tiles="https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
+                attr="Google Satellite",
+                name="Bản đồ Vệ tinh",
+                subdomains=["mt0", "mt1", "mt2", "mt3"],
+                overlay=True,
+                control=True,
+            ).add_to(m_admin)
+
+            # Nếu là Polygon, vẽ lại ranh giới vùng lên bản đồ admin
+            if (
+                row_chon["geo_type"] == "Polygon"
+                and pd.notnull(row_chon["geo_coords"])
+            ):
+              try:
+                coords = json.loads(row_chon["geo_coords"])
+                if len(coords) > 0:
+                  # Đổi thứ tự từ [lon, lat] sang [lat, lon] cho Folium
+                  folium_pts = [[pt[1], pt[0]] for pt in coords[0]]
+                  folium.Polygon(
+                      locations=folium_pts,
+                      color="yellow",
+                      weight=3,
+                      fill=True,
+                      fill_color="blue",
+                      fill_opacity=0.3,
+                      popup=f"<b>{row_chon['ho_ten']}</b><br>Diện tích: {row_chon['dien_tich_khai_bao']} m²",
+                  ).add_to(m_admin)
+              except Exception:
+                pass
+
+            # Đặt Marker đánh dấu vị trí
+            folium.Marker(
+                [lat_Check, lon_Check],
+                popup=(
+                    f"<b>Chủ hộ: {row_chon['ho_ten']}</b><br>SĐT:"
+                    f" {row_chon['sdt']}<br>Diện tích:"
+                    f" {row_chon['dien_tich_khai_bao']} m²<br>Hiện trạng:"
+                    f" {row_chon['hien_trang']} ({row_chon['hien_trang_chi_tiet']})"
+                ),
+                icon=folium.Icon(color="red", icon="home"),
+            ).add_to(m_admin)
+
+            st_folium(m_admin, width="100%", height=400, key=f"map_{selected_id}")
+          else:
+            st.warning(
+                "Thửa đất này chưa có thông tin tọa độ ghim trên bản đồ từ người"
+                " dân."
+            )
 
       st.markdown("### Xuất dữ liệu phục vụ nội nghiệp")
 
