@@ -128,7 +128,7 @@ with tab1:
         " nhật (Polygon/Rectangle)** để khoanh trọn ranh giới khu đất."
     )
 
-    m = folium.Map(location=[14.3305, 108.6472], zoom_start=15)
+    m = folium.Map(location=[13.494115, 107.748732], zoom_start=15)
 
     folium.TileLayer(
         tiles="https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
