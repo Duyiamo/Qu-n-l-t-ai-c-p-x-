@@ -74,11 +74,9 @@ with tab1:
       )
 
     with col2:
-      # Yêu cầu 3: Diện tích để trống, không để mặc định 1000
       dien_tich = st.number_input(
           "Diện tích tự khai báo (m²) *", min_value=0.0, value=0.0, step=10.0
       )
-      # Yêu cầu 1: Nguồn gốc để người dân tự nhập chữ
       nguon_goc = st.text_input(
           "Nguồn gốc sử dụng đất tự kê khai (Ví dụ: Khai hoang, Nhận chuyển"
           " nhượng...)"
@@ -112,10 +110,8 @@ with tab1:
         " để dễ quan sát)."
     )
 
-    # Yêu cầu 2: Khởi tạo bản đồ mặc định có tích hợp lớp bản đồ vệ tinh (Google Satellite)
     m = folium.Map(location=[14.3305, 108.6472], zoom_start=15)
 
-    # Thêm tile layer bản đồ vệ tinh
     folium.TileLayer(
         tiles="https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
         attr="Google Satellite",
@@ -172,42 +168,65 @@ with tab1:
 
         conn = sqlite3.connect(DB_FILE)
         cursor = conn.cursor()
-        cursor.execute(
-            """
+
+        # KIỂM TRA CHỐNG TRÙNG LẶP THEO TOẠ ĐỘ GPS
+        # Nếu tọa độ trùng khớp gần như tuyệt đối (sai số cực kỳ nhỏ < 0.00001 tương đương vài mét)
+        is_duplicate = False
+        if lat is not None and lon is not None:
+          cursor.execute(
+              """
+                    SELECT COUNT(*) FROM thia_dat 
+                    WHERE ABS(lat - ?) < 0.00001 AND ABS(lon - ?) < 0.00001
+                """,
+              (lat, lon),
+          )
+          count = cursor.fetchone()[0]
+          if count > 0:
+            is_duplicate = True
+
+        if is_duplicate:
+          st.error(
+              "⚠️ Vị trí thửa đất này đã được kê khai vào hệ thống! Xin vui"
+              " lòng nhập thửa đất khác và cập nhật vị trí khác trên bản đồ."
+          )
+        else:
+          cursor.execute(
+              """
                     INSERT INTO thia_dat (ho_ten, sdt, dia_chi_thuong_tru, so_to, so_thua, dia_chi_thua_dat, dien_tich_khai_bao, nguon_goc, hien_trang, hien_trang_chi_tiet, tinh_trang_so, ghi_chu, lat, lon, ngay_tao)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-            (
-                ho_ten,
-                sdt,
-                dia_chi_thuong_tru,
-                so_to,
-                so_thua,
-                dia_chi_thua_dat,
-                dien_tich,
-                nguon_goc,
-                hien_trang,
-                hien_trang_chi_tiet,
-                tinh_trang_so,
-                ghi_chu,
-                lat,
-                lon,
-                datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            ),
-        )
-        conn.commit()
-        conn.close()
+              (
+                  ho_ten,
+                  sdt,
+                  dia_chi_thuong_tru,
+                  so_to,
+                  so_thua,
+                  dia_chi_thua_dat,
+                  dien_tich,
+                  nguon_goc,
+                  hien_trang,
+                  hien_trang_chi_tiet,
+                  tinh_trang_so,
+                  ghi_chu,
+                  lat,
+                  lon,
+                  datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+              ),
+          )
+          conn.commit()
 
-        if lat and lon:
-          st.success(
-              f"Cảm ơn ông/bà **{ho_ten}**! Dữ liệu đã gửi về hệ thống quản lý"
-              f" thành công (Tọa độ: {lat:.5f}, {lon:.5f})."
-          )
-        else:
-          st.warning(
-              f"Cảm ơn ông/bà **{ho_ten}**! Đã lưu thông tin (Chưa thấy bạn"
-              " chấm điểm vị trí trên bản đồ)."
-          )
+          if lat and lon:
+            st.success(
+                f"Cảm ơn ông/bà **{ho_ten}**! Dữ liệu đã gửi về hệ thống quản"
+                f" lý thành công (Tọa độ: {lat:.5f}, {lon:.5f})."
+            )
+          else:
+            st.warning(
+                f"Cảm ơn ông/bà **{ho_ten}**! Đã lưu thông tin (Chưa thấy bạn"
+                " chấm điểm vị trí trên bản đồ)."
+            )
+
+        conn.close()
 
 with tab2:
   st.header("Khu vực Quản trị dành cho Cán bộ địa chính")
