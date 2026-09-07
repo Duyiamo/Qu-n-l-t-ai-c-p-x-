@@ -73,7 +73,7 @@ tab1, tab2 = st.tabs(
 )
 
 with tab1:
-  st.header("Nhập thông tin và vẽ ranh giới thửa đất trên bản đồ")
+  st.header("Nhập thông tin và xác định vị trí / ranh giới thửa đất")
 
   with st.form("form_khai_bao"):
     col1, col2 = st.columns(2)
@@ -83,7 +83,6 @@ with tab1:
       dia_chi_thuong_tru = st.text_input(
           "Địa chỉ thường trú (Thôn/Xóm, Xã...)"
       )
-      # BỔ SUNG TRƯỜNG THÔN / LÀNG
       thon_lang = st.text_input(
           "Thôn / Làng tọa lạc thửa đất * (Ví dụ: Làng Hnáp, Thôn 1...)"
       )
@@ -129,13 +128,15 @@ with tab1:
         " nhật (Polygon/Rectangle)** để khoanh trọn ranh giới khu đất."
     )
 
-    m = folium.Map(location=[13.494115, 107.748732], zoom_start=15)
+    m = folium.Map(location=[14.3305, 108.6472], zoom_start=15)
 
     folium.TileLayer(
         tiles="https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
         attr="Google Satellite",
         name="Bản đồ Vệ tinh",
         subdomains=["mt0", "mt1", "mt2", "mt3"],
+        max_zoom=22,
+        max_native_zoom=20,
         overlay=True,
         control=True,
     ).add_to(m)
@@ -296,7 +297,6 @@ with tab2:
 
       st.markdown("### Bộ lọc dữ liệu quản lý theo không gian hành chính")
 
-      # BỔ SUNG BỘ LỌC THEO THÔN / LÀNG VÀ NGÀY
       col_f1, col_f2 = st.columns(2)
       with col_f1:
         danh_sach_thon = ["Tất cả các Thôn/Làng"] + sorted(
@@ -310,7 +310,6 @@ with tab2:
         )
         chon_ngay = st.selectbox("Lọc theo ngày kê khai:", danh_sach_ngay)
 
-      # Áp dụng bộ lọc kép
       df_hien_thi = df.copy()
       if chon_thon != "Tất cả các Thôn/Làng":
         df_hien_thi = df_hien_thi[df_hien_thi["thon_lang"] == chon_thon]
@@ -370,6 +369,8 @@ with tab2:
                 attr="Google Satellite",
                 name="Bản đồ Vệ tinh",
                 subdomains=["mt0", "mt1", "mt2", "mt3"],
+                max_zoom=22,
+                max_native_zoom=20,
                 overlay=True,
                 control=True,
             ).add_to(m_admin)
@@ -422,7 +423,7 @@ with tab2:
 
           ws.merge_cells("A1:Q1")
           ws["A1"] = (
-              "DANH SÁCH TỔNG HỢP HIỆN TRẠNG CANH TÁC ĐẤT ĐAI CẤP XÃ"
+              "DANH SÁCH TỔNG HỢP HIỆN TRẠNG CANH TÁC ĐẤT ĐAI CẤP Xã"
           ).upper()
           ws["A1"].font = Font(name="Times New Roman", size=14, bold=True)
           ws["A1"].alignment = Alignment(horizontal="center", vertical="center")
