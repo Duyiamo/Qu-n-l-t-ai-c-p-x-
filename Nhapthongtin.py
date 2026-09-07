@@ -1,3 +1,4 @@
+import json
 import sqlite3
 from datetime import datetime
 import io
@@ -33,6 +34,8 @@ def init_db():
             ghi_chu TEXT,
             lat REAL,
             lon REAL,
+            geo_type TEXT,
+            geo_coords TEXT,
             ngay_tao TEXT
         )
     """)
@@ -48,8 +51,8 @@ st.set_page_config(
 
 st.title("🌾 Hệ thống Thu thập & Quản lý Hiện trạng Đất đai Cấp Xã")
 st.markdown(
-    "Ứng dụng hỗ trợ ghi nhận vị trí canh tác của hộ dân và kết xuất báo cáo"
-    " chuyên nghiệp."
+    "Ứng dụng hỗ trợ ghi nhận vị trí và vẽ ranh giới canh tác của hộ dân, kết"
+    " xuất báo cáo chuyên nghiệp."
 )
 
 tab1, tab2 = st.tabs(
@@ -57,7 +60,7 @@ tab1, tab2 = st.tabs(
 )
 
 with tab1:
-  st.header("Nhập thông tin và xác định vị trí thửa đất")
+  st.header("Nhập thông tin và xác định vị trí / ranh giới thửa đất")
 
   with st.form("form_khai_bao"):
     col1, col2 = st.columns(2)
@@ -67,8 +70,8 @@ with tab1:
       dia_chi_thuong_tru = st.text_input(
           "Địa chỉ thường trú (Thôn/Xóm, Xã...)"
       )
-      so_to = st.text_input("Số tờ bản đồ")
-      so_thua = st.text_input("Số thửa đất")
+      so_to = st.text_input("Số tờ bản đồ (nếu biết)")
+      so_thua = st.text_input("Số thửa đất (nếu biết)")
       dia_chi_thua_dat = st.text_input(
           "Địa chỉ / Khu vực tọa lạc thửa đất (Ví dụ: Thôn 2, Khu Đồng Lớn...)"
       )
@@ -104,10 +107,10 @@ with tab1:
 
     st.markdown("---")
     st.markdown(
-        "**Xác định vị trí trên bản đồ:** Bạn có thể bấm vào nút định vị GPS"
-        " góc trên bản đồ để lấy vị trí hiện tại, hoặc tự di chuyển bản đồ đến"
-        " thửa đất. (Có thể chuyển sang chế độ **Vệ tinh** ở góc trái bản đồ"
-        " để dễ quan sát)."
+        "**Xác định vị trí trên bản đồ vệ tinh:** Bạn có thể **chấm 1 điểm"
+        " (Marker)** vào giữa thửa đất hoặc dùng công cụ **vẽ đa giác"
+        " (Polygon)** trên thanh công cụ của bản đồ để khoanh trọn ranh giới"
+        " khu đất canh tác."
     )
 
     m = folium.Map(location=[14.3305, 108.6472], zoom_start=15)
@@ -133,14 +136,15 @@ with tab1:
         locate_options={"maxZoom": 18},
     ).add_to(m)
 
+    # Bật tính năng vẽ Marker và Polygon trên bản đồ
     draw = Draw(
         export=False,
         draw_options={
             "polyline": False,
-            "polygon": False,
-            "rectangle": False,
+            "polygon": True,  # Cho phép vẽ ranh giới vùng
+            "rectangle": True,  # Cho phép vẽ hình chữ nhật
             "circle": False,
-            "marker": True,
+            "marker": True,  # Cho phép chấm điểm
             "circlemarker": False,
         },
     )
@@ -157,14 +161,35 @@ with tab1:
         st.error("Vui lòng nhập họ và tên chủ sử dụng!")
       else:
         lat, lon = None, None
+        geo_type = None
+        geo_coords = None
+
         if output:
-          if output.get("last_clicked"):
+          # Kiểm tra nếu người dùng vẽ đa giác/hình chữ nhật
+          if output.get("all_drawings") and len(output["all_drawings"]) > 0:
+            last_shape = output["all_drawings"][-1]
+            geometry = last_shape.get("geometry")
+            if geometry:
+              geo_type = geometry["type"]  # 'Polygon' hoặc 'Point' v.v.
+              coords = geometry["coordinates"]
+              geo_coords = json.dumps(coords)
+
+              # Nếu là Polygon, lấy tọa độ điểm đầu tiên làm tâm đại diện
+              if geo_type == "Polygon" and len(coords) > 0 and len(coords[0]) > 0:
+                lon = coords[0][0][0]
+                lat = coords[0][0][1]
+
+          # Nếu không vẽ vùng mà chỉ click chấm điểm thông thường
+          if (
+              not lat
+              and not lon
+              and output.get("last_clicked")
+              and output["last_clicked"]
+          ):
             lat = output["last_clicked"]["lat"]
             lon = output["last_clicked"]["lng"]
-          elif output.get("all_drawings") and len(output["all_drawings"]) > 0:
-            geometry = output["all_drawings"][-1]["geometry"]
-            if geometry["type"] == "Point":
-              lon, lat = geometry["coordinates"][0], geometry["coordinates"][1]
+            geo_type = "Point"
+            geo_coords = json.dumps([[lon, lat]])
 
         conn = sqlite3.connect(DB_FILE)
         cursor = conn.cursor()
@@ -188,12 +213,11 @@ with tab1:
               " lòng nhập thửa đất khác và cập nhật vị trí khác trên bản đồ."
           )
         else:
-          # Chỉ lưu ngày tháng năm (YYYY-MM-DD)
           ngay_hien_tai = datetime.now().strftime("%Y-%m-%d")
           cursor.execute(
               """
-                    INSERT INTO thia_dat (ho_ten, sdt, dia_chi_thuong_tru, so_to, so_thua, dia_chi_thua_dat, dien_tich_khai_bao, nguon_goc, hien_trang, hien_trang_chi_tiet, tinh_trang_so, ghi_chu, lat, lon, ngay_tao)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO thia_dat (ho_ten, sdt, dia_chi_thuong_tru, so_to, so_thua, dia_chi_thua_dat, dien_tich_khai_bao, nguon_goc, hien_trang, hien_trang_chi_tiet, tinh_trang_so, ghi_chu, lat, lon, geo_type, geo_coords, ngay_tao)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
               (
                   ho_ten,
@@ -210,6 +234,8 @@ with tab1:
                   ghi_chu,
                   lat,
                   lon,
+                  geo_type,
+                  geo_coords,
                   ngay_hien_tai,
               ),
           )
@@ -217,13 +243,13 @@ with tab1:
 
           if lat and lon:
             st.success(
-                f"Cảm ơn ông/bà **{ho_ten}**! Dữ liệu đã gửi về hệ thống quản"
-                f" lý thành công (Tọa độ: {lat:.5f}, {lon:.5f})."
+                f"Cảm ơn ông/bà **{ho_ten}**! Dữ liệu ranh giới/vị trí đã gửi"
+                f" về hệ thống thành công."
             )
           else:
             st.warning(
                 f"Cảm ơn ông/bà **{ho_ten}**! Đã lưu thông tin (Chưa thấy bạn"
-                " chấm điểm vị trí trên bản đồ)."
+                " chấm điểm hoặc vẽ ranh giới trên bản đồ)."
             )
 
         conn.close()
@@ -251,7 +277,6 @@ with tab2:
           value=f"{len(df)} thửa đất",
       )
 
-      # --- BỔ SUNG BỘ LỌC THEO NGÀY ---
       st.markdown("### Bộ lọc dữ liệu quản lý")
       danh_sach_ngay = ["Tất cả các ngày"] + sorted(
           df["ngay_tao"].dropna().unique().tolist()
@@ -279,157 +304,226 @@ with tab2:
               "hien_trang",
               "hien_trang_chi_tiet",
               "tinh_trang_so",
-              "lat",
-              "lon",
+              "geo_type",
               "ngay_tao",
           ]],
           use_container_width=True,
       )
 
-      st.markdown("### Xuất dữ liệu báo cáo định dạng chuyên nghiệp")
+      st.markdown("### Xuất dữ liệu phục vụ nội nghiệp")
 
-      if st.button("📥 Tạo và Tải xuống File Excel Báo Cáo"):
-        wb = openpyxl.Workbook()
-        ws = wb.active
-        ws.title = "Danh sách hiện trạng đất"
+      col_ex1, col_ex2 = st.columns(2)
 
-        ws.sheet_view.showGridLines = True
+      with col_ex1:
+        if st.button("📥 Tạo và Tải xuống File Excel Báo Cáo"):
+          wb = openpyxl.Workbook()
+          ws = wb.active
+          ws.title = "Danh sách hiện trạng đất"
+          ws.sheet_view.showGridLines = True
 
-        ws.merge_cells("A1:P1")
-        ws["A1"] = (
-            "DANH SÁCH TỔNG HỢP HIỆN TRẠNG CANH TÁC ĐẤT ĐAI CẤP XÃ"
-        ).upper()
-        ws["A1"].font = Font(name="Times New Roman", size=14, bold=True)
-        ws["A1"].alignment = Alignment(horizontal="center", vertical="center")
+          ws.merge_cells("A1:P1")
+          ws["A1"] = (
+              "DANH SÁCH TỔNG HỢP HIỆN TRẠNG CANH TÁC ĐẤT ĐAI CẤP XÃ"
+          ).upper()
+          ws["A1"].font = Font(name="Times New Roman", size=14, bold=True)
+          ws["A1"].alignment = Alignment(horizontal="center", vertical="center")
 
-        headers = [
-            "STT",
-            "Họ và tên chủ sử dụng",
-            "Số điện thoại",
-            "Địa chỉ thường trú",
-            "Số tờ",
-            "Số thửa",
-            "Địa chỉ thửa đất",
-            "Diện tích (m²)",
-            "Nguồn gốc tự kê khai",
-            "Nhóm hiện trạng",
-            "Tên cây trồng cụ thể",
-            "Tình trạng Giấy chứng nhận",
-            "Vĩ độ (Lat)",
-            "Kinh độ (Lon)",
-            "Link Google Maps",
-            "Ngày kê khai",
-        ]
-        ws.append([])
-        ws.append(headers)
-
-        header_font = Font(
-            name="Times New Roman", size=11, bold=True, color="FFFFFF"
-        )
-        header_fill = PatternFill(
-            start_color="1F4E78", end_color="1F4E78", fill_type="solid"
-        )
-        header_align = Alignment(
-            horizontal="center", vertical="center", wrap_text=True
-        )
-
-        for col_num in range(1, len(headers) + 1):
-          cell = ws.cell(row=3, column=col_num)
-          cell.font = header_font
-          cell.fill = header_fill
-          cell.alignment = header_align
-
-        thin_border = Border(
-            left=Side(style="thin", color="D9D9D9"),
-            right=Side(style="thin", color="D9D9D9"),
-            top=Side(style="thin", color="D9D9D9"),
-            bottom=Side(style="thin", color="D9D9D9"),
-        )
-
-        data_font = Font(name="Times New Roman", size=11)
-
-        # Xuất dữ liệu theo bảng đang lọc hoặc toàn bộ
-        for idx, row in df_hien_thi.reset_index(drop=True).iterrows():
-          lat_val = row["lat"]
-          lon_val = row["lon"]
-          map_link = (
-              f"https://www.google.com/maps?q={lat_val},{lon_val}"
-              if pd.notnull(lat_val) and pd.notnull(lon_val)
-              else "Chưa có vị trí"
-          )
-
-          row_data = [
-              idx + 1,
-              row["ho_ten"],
-              str(row["sdt"]) if pd.notnull(row["sdt"]) else "",
-              str(row["dia_chi_thuong_tru"])
-              if pd.notnull(row["dia_chi_thuong_tru"])
-              else "",
-              str(row["so_to"]) if pd.notnull(row["so_to"]) else "",
-              str(row["so_thua"]) if pd.notnull(row["so_thua"]) else "",
-              str(row["dia_chi_thua_dat"])
-              if pd.notnull(row["dia_chi_thua_dat"])
-              else "",
-              row["dien_tich_khai_bao"],
-              str(row["nguon_goc"]) if pd.notnull(row["nguon_goc"]) else "",
-              row["hien_trang"],
-              row["hien_trang_chi_tiet"]
-              if pd.notnull(row["hien_trang_chi_tiet"])
-              else "",
-              row["tinh_trang_so"],
-              lat_val if pd.notnull(lat_val) else "",
-              lon_val if pd.notnull(lon_val) else "",
-              map_link,
-              str(row["ngay_tao"]),
+          headers = [
+              "STT",
+              "Họ và tên chủ sử dụng",
+              "Số điện thoại",
+              "Địa chỉ thường trú",
+              "Số tờ",
+              "Số thửa",
+              "Địa chỉ thửa đất",
+              "Diện tích (m²)",
+              "Nguồn gốc tự kê khai",
+              "Nhóm hiện trạng",
+              "Tên cây trồng cụ thể",
+              "Tình trạng Giấy chứng nhận",
+              "Kiểu dữ liệu bản đồ",
+              "Link Google Maps",
+              "Ngày kê khai",
           ]
-          ws.append(row_data)
+          ws.append([])
+          ws.append(headers)
 
-        for row_idx in range(4, 4 + len(df_hien_thi)):
-          for col_idx in range(1, len(headers) + 1):
-            cell = ws.cell(row=row_idx, column=col_idx)
-            cell.font = data_font
-            cell.border = thin_border
-
-            if col_idx in [1, 5, 6, 13, 14, 16]:
-              cell.alignment = Alignment(horizontal="center", vertical="center")
-            elif col_idx == 8:
-              cell.alignment = Alignment(horizontal="right", vertical="center")
-              cell.number_format = "#,##0"
-            elif col_idx == 15:
-              cell.alignment = Alignment(horizontal="center", vertical="center")
-              cell.font = Font(
-                  name="Times New Roman",
-                  size=10,
-                  color="0563C1",
-                  underline="single",
-              )
-            else:
-              cell.alignment = Alignment(horizontal="left", vertical="center")
-
-        for col in ws.columns:
-          max_len = 0
-          col_letter = openpyxl.utils.get_column_letter(col[0].column)
-          for cell in col:
-            if cell.row > 1:
-              val_str = str(cell.value or "")
-              if len(val_str) > max_len:
-                max_len = len(val_str)
-          ws.column_dimensions[col_letter].width = max(max_len + 4, 12)
-
-        local_file_name = "Bao_cao_hien_trang_dat_dai.xlsx"
-        wb.save(local_file_name)
-
-        with open(local_file_name, "rb") as f:
-          st.download_button(
-              label="📥 Nhấn vào đây để tải file Excel báo cáo đẹp",
-              data=f,
-              file_name=local_file_name,
-              mime=(
-                  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-              ),
+          header_font = Font(
+              name="Times New Roman", size=11, bold=True, color="FFFFFF"
+          )
+          header_fill = PatternFill(
+              start_color="1F4E78", end_color="1F4E78", fill_type="solid"
+          )
+          header_align = Alignment(
+              horizontal="center", vertical="center", wrap_text=True
           )
 
-        st.success(f"Đã cập nhật file `{local_file_name}` mới nhất!")
+          for col_num in range(1, len(headers) + 1):
+            cell = ws.cell(row=3, column=col_num)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = header_align
+
+          thin_border = Border(
+              left=Side(style="thin", color="D9D9D9"),
+              right=Side(style="thin", color="D9D9D9"),
+              top=Side(style="thin", color="D9D9D9"),
+              bottom=Side(style="thin", color="D9D9D9"),
+          )
+          data_font = Font(name="Times New Roman", size=11)
+
+          for idx, row in df_hien_thi.reset_index(drop=True).iterrows():
+            lat_val = row["lat"]
+            lon_val = row["lon"]
+            map_link = (
+                f"https://www.google.com/maps?q={lat_val},{lon_val}"
+                if pd.notnull(lat_val) and pd.notnull(lon_val)
+                else "Chưa có vị trí"
+            )
+
+            row_data = [
+                idx + 1,
+                row["ho_ten"],
+                str(row["sdt"]) if pd.notnull(row["sdt"]) else "",
+                str(row["dia_chi_thuong_tru"])
+                if pd.notnull(row["dia_chi_thuong_tru"])
+                else "",
+                str(row["so_to"]) if pd.notnull(row["so_to"]) else "",
+                str(row["so_thua"]) if pd.notnull(row["so_thua"]) else "",
+                str(row["dia_chi_thua_dat"])
+                if pd.notnull(row["dia_chi_thua_dat"])
+                else "",
+                row["dien_tich_khai_bao"],
+                str(row["nguon_goc"]) if pd.notnull(row["nguon_goc"]) else "",
+                row["hien_trang"],
+                row["hien_trang_chi_tiet"]
+                if pd.notnull(row["hien_trang_chi_tiet"])
+                else "",
+                row["tinh_trang_so"],
+                row["geo_type"] if pd.notnull(row["geo_type"]) else "",
+                map_link,
+                str(row["ngay_tao"]),
+            ]
+            ws.append(row_data)
+
+          for row_idx in range(4, 4 + len(df_hien_thi)):
+            for col_idx in range(1, len(headers) + 1):
+              cell = ws.cell(row=row_idx, column=col_idx)
+              cell.font = data_font
+              cell.border = thin_border
+
+              if col_idx in [1, 5, 6, 13, 15]:
+                cell.alignment = Alignment(
+                    horizontal="center", vertical="center"
+                )
+              elif col_idx == 8:
+                cell.alignment = Alignment(horizontal="right", vertical="center")
+                cell.number_format = "#,##0"
+              elif col_idx == 14:
+                cell.alignment = Alignment(
+                    horizontal="center", vertical="center"
+                )
+                cell.font = Font(
+                    name="Times New Roman",
+                    size=10,
+                    color="0563C1",
+                    underline="single",
+                )
+              else:
+                cell.alignment = Alignment(horizontal="left", vertical="center")
+
+          for col in ws.columns:
+            max_len = 0
+            col_letter = openpyxl.utils.get_column_letter(col[0].column)
+            for cell in col:
+              if cell.row > 1:
+                val_str = str(cell.value or "")
+                if len(val_str) > max_len:
+                  max_len = len(val_str)
+            ws.column_dimensions[col_letter].width = max(max_len + 4, 12)
+
+          local_file_name = "Bao_cao_hien_trang_dat_dai.xlsx"
+          wb.save(local_file_name)
+
+          with open(local_file_name, "rb") as f:
+            st.download_button(
+                label="📥 Tải file Excel ngay",
+                data=f,
+                file_name=local_file_name,
+                mime=(
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                ),
+            )
+
+      with col_ex2:
+        if st.button("🌍 Tải File Bản Đồ (KML hỗ trợ Vùng & Điểm)"):
+          kml_content = """<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>Danh sách Thửa đất và Ranh giới Kê khai</name>
+"""
+          for _, row in df_hien_thi.iterrows():
+            ho_ten_Val = str(row["ho_ten"] or "").strip()
+            so_to_val = str(row["so_to"] or "").strip()
+            so_thua_val = str(row["so_thua"] or "").strip()
+
+            if so_to_val != "" and so_thua_val != "":
+              name = f"{ho_ten_Val} - Thửa: {so_thua_val}, Tờ: {so_to_val}"
+            else:
+              name = ho_ten_Val
+
+            desc = (
+                f"Chủ sử dụng: {ho_ten_Val}<br/>SĐT: {row['sdt']}<br/>Diện"
+                f" tích khai báo: {row['dien_tich_khai_bao']} m²<br/>Hiện"
+                f" trạng: {row['hien_trang']} ({row['hien_trang_chi_tiet']})"
+            )
+
+            geo_type = row["geo_type"]
+            geo_coords_str = row["geo_coords"]
+
+            # Nếu người dân vẽ đa giác (Polygon)
+            if geo_type == "Polygon" and pd.notnull(geo_coords_str):
+              try:
+                coords_list = json.loads(geo_coords_str)
+                # coords_list[0] là danh sách các điểm [lon, lat, alt] của polygon
+                if len(coords_list) > 0:
+                  kml_coords_flat = " ".join(
+                      [f"{pt[0]},{pt[1]},0" for pt in coords_list[0]]
+                  )
+                  kml_content += f"""    <Placemark>
+      <name><![CDATA[{name} (Vùng ranh giới)]]></name>
+      <description><![CDATA[{desc}]]></description>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>{kml_coords_flat}</coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+"""
+              except Exception:
+                pass
+
+            # Nếu người dân chỉ chấm điểm (Point) hoặc dữ liệu cũ
+            elif pd.notnull(row["lat"]) and pd.notnull(row["lon"]):
+              kml_content += f"""    <Placemark>
+      <name><![CDATA[{name}]]></name>
+      <description><![CDATA[{desc}]]></description>
+      <Point>
+        <coordinates>{row['lon']},{row['lat']},0</coordinates>
+      </Point>
+    </Placemark>
+"""
+          kml_content += """  </Document>
+</kml>"""
+
+          st.download_button(
+              label="📥 Tải file KML mở Google Earth",
+              data=kml_content.encode("utf-8"),
+              file_name="hien_trang_dat_dai_vung.kml",
+              mime="application/vnd.google-earth.kml+xml",
+          )
 
   elif password != "":
     st.error("Sai mật khẩu quản lý! Vui lòng thử lại.")
