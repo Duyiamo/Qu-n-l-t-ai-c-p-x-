@@ -180,9 +180,11 @@ with tab1:
               coords = geometry["coordinates"]
               geo_coords = json.dumps(coords)
 
+              # CẬP NHẬT QUAN TRỌNG: Tự động tính tâm (Centroid) chính xác của đa giác
               if geo_type == "Polygon" and len(coords) > 0 and len(coords[0]) > 0:
-                lon = coords[0][0][0]
-                lat = coords[0][0][1]
+                pts = coords[0]
+                lon = sum(pt[0] for pt in pts) / len(pts)
+                lat = sum(pt[1] for pt in pts) / len(pts)
 
           if (
               not lat
@@ -264,7 +266,7 @@ with tab2:
   password = st.text_input(
       "Nhập mật khẩu quản lý để tiếp tục:", type="password"
   )
-  ADMIN_PASSWORD = "admin060416"
+  ADMIN_PASSWORD = "admin123"
 
   if password == ADMIN_PASSWORD:
     st.success("Xác thực thành công! Chào mừng cán bộ quản lý.")
@@ -314,10 +316,8 @@ with tab2:
           use_container_width=True,
       )
 
-      # --- TÍNH NĂNG MỚI: KIỂM TRA NHANH TỪNG THỬA ĐẤT TRÊN BẢN ĐỒ ---
       st.markdown("### 🔍 Kiểm tra nhanh vị trí / ranh giới từng thửa đất")
       if not df_hien_thi.empty:
-        # Tạo danh sách lựa chọn dạng "Tên chủ hộ - Thửa... Tờ... (Ngày...)"
         options_thua = []
         for _, r in df_hien_thi.iterrows():
           label_item = (
@@ -353,7 +353,6 @@ with tab2:
                 control=True,
             ).add_to(m_admin)
 
-            # Nếu là Polygon, vẽ lại ranh giới vùng lên bản đồ admin
             if (
                 row_chon["geo_type"] == "Polygon"
                 and pd.notnull(row_chon["geo_coords"])
@@ -361,7 +360,6 @@ with tab2:
               try:
                 coords = json.loads(row_chon["geo_coords"])
                 if len(coords) > 0:
-                  # Đổi thứ tự từ [lon, lat] sang [lat, lon] cho Folium
                   folium_pts = [[pt[1], pt[0]] for pt in coords[0]]
                   folium.Polygon(
                       locations=folium_pts,
@@ -375,7 +373,6 @@ with tab2:
               except Exception:
                 pass
 
-            # Đặt Marker đánh dấu vị trí
             folium.Marker(
                 [lat_Check, lon_Check],
                 popup=(
