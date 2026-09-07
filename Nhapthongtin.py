@@ -169,8 +169,6 @@ with tab1:
         conn = sqlite3.connect(DB_FILE)
         cursor = conn.cursor()
 
-        # KIỂM TRA CHỐNG TRÙNG LẶP THEO TOẠ ĐỘ GPS
-        # Nếu tọa độ trùng khớp gần như tuyệt đối (sai số cực kỳ nhỏ < 0.00001 tương đương vài mét)
         is_duplicate = False
         if lat is not None and lon is not None:
           cursor.execute(
@@ -190,6 +188,8 @@ with tab1:
               " lòng nhập thửa đất khác và cập nhật vị trí khác trên bản đồ."
           )
         else:
+          # Chỉ lưu ngày tháng năm (YYYY-MM-DD)
+          ngay_hien_tai = datetime.now().strftime("%Y-%m-%d")
           cursor.execute(
               """
                     INSERT INTO thia_dat (ho_ten, sdt, dia_chi_thuong_tru, so_to, so_thua, dia_chi_thua_dat, dien_tich_khai_bao, nguon_goc, hien_trang, hien_trang_chi_tiet, tinh_trang_so, ghi_chu, lat, lon, ngay_tao)
@@ -210,7 +210,7 @@ with tab1:
                   ghi_chu,
                   lat,
                   lon,
-                  datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                  ngay_hien_tai,
               ),
           )
           conn.commit()
@@ -251,8 +251,22 @@ with tab2:
           value=f"{len(df)} thửa đất",
       )
 
+      # --- BỔ SUNG BỘ LỌC THEO NGÀY ---
+      st.markdown("### Bộ lọc dữ liệu quản lý")
+      danh_sach_ngay = ["Tất cả các ngày"] + sorted(
+          df["ngay_tao"].dropna().unique().tolist()
+      )
+      chon_ngay = st.selectbox("Lọc danh sách theo ngày kê khai:", danh_sach_ngay)
+
+      if chon_ngay != "Tất cả các ngày":
+        df_hien_thi = df[df["ngay_tao"] == chon_ngay]
+      else:
+        df_hien_thi = df
+
+      st.markdown(f"Đang hiển thị **{len(df_hien_thi)}** bản ghi.")
+
       st.dataframe(
-          df[[
+          df_hien_thi[[
               "id",
               "ho_ten",
               "sdt",
@@ -334,7 +348,8 @@ with tab2:
 
         data_font = Font(name="Times New Roman", size=11)
 
-        for idx, row in df.iterrows():
+        # Xuất dữ liệu theo bảng đang lọc hoặc toàn bộ
+        for idx, row in df_hien_thi.reset_index(drop=True).iterrows():
           lat_val = row["lat"]
           lon_val = row["lon"]
           map_link = (
@@ -369,7 +384,7 @@ with tab2:
           ]
           ws.append(row_data)
 
-        for row_idx in range(4, 4 + len(df)):
+        for row_idx in range(4, 4 + len(df_hien_thi)):
           for col_idx in range(1, len(headers) + 1):
             cell = ws.cell(row=row_idx, column=col_idx)
             cell.font = data_font
