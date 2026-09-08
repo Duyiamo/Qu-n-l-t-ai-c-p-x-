@@ -166,7 +166,8 @@ with tab1:
     )
     draw.add_to(m)
 
-    output = st_folium(m, width="100%", height=450, key="map_input")
+    # TĂNG CHIỀU CAO KHUNG BẢN ĐỒ NHẬP LIỆU LÊN 650 PIXEL
+    output = st_folium(m, width="100%", height=650, key="map_input")
 
     submit_button = st.form_submit_button(
         "Gửi thông tin thửa đất", type="primary"
@@ -383,6 +384,13 @@ with tab2:
                 coords = json.loads(row_chon["geo_coords"])
                 if len(coords) > 0:
                   folium_pts = [[pt[1], pt[0]] for pt in coords[0]]
+                  popup_poly = f"""
+                                    <div style="width: 220px; font-size: 13px;">
+                                        <b>{row_chon['ho_ten']}</b><br>
+                                        <b>Thôn:</b> {row_chon['thon_lang']}<br>
+                                        <b>Diện tích:</b> {row_chon['dien_tich_khai_bao']} m²
+                                    </div>
+                                    """
                   folium.Polygon(
                       locations=folium_pts,
                       color="yellow",
@@ -390,23 +398,27 @@ with tab2:
                       fill=True,
                       fill_color="blue",
                       fill_opacity=0.3,
-                      popup=f"<b>{row_chon['ho_ten']}</b><br>Thôn: {row_chon['thon_lang']}<br>Diện tích: {row_chon['dien_tich_khai_bao']} m²",
+                      popup=folium.Popup(popup_poly, max_width=300),
                   ).add_to(m_admin)
               except Exception:
                 pass
 
+            popup_marker = f"""
+                        <div style="width: 240px; font-size: 13px;">
+                            <b>Chủ hộ: {row_chon['ho_ten']}</b><br>
+                            <b>Thôn:</b> {row_chon['thon_lang']}<br>
+                            <b>Diện tích:</b> {row_chon['dien_tich_khai_bao']} m²<br>
+                            <b>Hiện trạng:</b> {row_chon['hien_trang']} ({row_chon['hien_trang_chi_tiet']})
+                        </div>
+                        """
             folium.Marker(
                 [lat_Check, lon_Check],
-                popup=(
-                    f"<b>Chủ hộ: {row_chon['ho_ten']}</b><br>Thôn:"
-                    f" {row_chon['thon_lang']}<br>Diện tích:"
-                    f" {row_chon['dien_tich_khai_bao']} m²<br>Hiện trạng:"
-                    f" {row_chon['hien_trang']} ({row_chon['hien_trang_chi_tiet']})"
-                ),
+                popup=folium.Popup(popup_marker, max_width=300),
                 icon=folium.Icon(color="red", icon="home"),
             ).add_to(m_admin)
 
-            st_folium(m_admin, width="100%", height=400, key=f"map_{selected_id}")
+            # TĂNG CHIỀU CAO KHUNG BẢN ĐỒ ADMIN LÊN 650 PIXEL
+            st_folium(m_admin, width="100%", height=650, key=f"map_{selected_id}")
           else:
             st.warning("Thửa đất này chưa có thông tin vị trí trên bản đồ.")
 
