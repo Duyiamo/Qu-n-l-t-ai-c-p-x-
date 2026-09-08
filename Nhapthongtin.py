@@ -392,7 +392,6 @@ with tab2:
               "thon_lang",
               "so_to",
               "so_thua",
-              "dia_chi_thua_dat",
               "dien_tich_khai_bao",
               "nguon_goc",
               "hien_trang",
@@ -401,6 +400,140 @@ with tab2:
           ]],
           use_container_width=True,
       )
+
+      # --- CHỨC NĂNG CHỈNH SỬA & XÓA THÔNG TIN CHO ADMIN ---
+      st.markdown("### ⚙️ Quản lý sửa đổi / xóa bỏ bản ghi sai sót")
+      if not df_hien_thi.empty:
+        edit_options = []
+        for _, r in df_hien_thi.iterrows():
+          edit_options.append(
+              (
+                  f"ID: {r['id']} | Thôn: {r['thon_lang']} | Chủ hộ:"
+                  f" {r['ho_ten']}",
+                  r["id"],
+              )
+          )
+
+        selected_edit_item = st.selectbox(
+            "Chọn thửa đất cần Sửa hoặc Xóa:",
+            edit_options,
+            format_func=lambda x: x[0],
+            key="select_edit_record",
+        )
+
+        if selected_edit_item:
+          rec_id = selected_edit_item[1]
+          current_record = df[df["id"] == rec_id].iloc[0]
+
+          action_mode = st.radio(
+              "Chọn thao tác nghiệp vụ:", ["Chỉnh sửa thông tin", "Xóa bản ghi"],
+              horizontal=True,
+          )
+
+          if action_mode == "Xóa bản ghi":
+            st.warning(
+                f"⚠️ Bạn đang chuẩn bị XÓA bản ghi (ID: {rec_id} - Chủ hộ:"
+                f" {current_record['ho_ten']}). Hành động này không thể hoàn"
+                " tác!"
+            )
+            if st.button("🗑️ Xác nhận Xóa vĩnh viễn", type="primary"):
+              conn = sqlite3.connect(DB_FILE)
+              cursor = conn.cursor()
+              cursor.execute("DELETE FROM thia_dat WHERE id = ?", (rec_id,))
+              conn.commit()
+              conn.close()
+              st.success(
+                  f"Đã xóa thành công bản ghi ID {rec_id}! Hãy tải lại trang để"
+                  " cập nhật bảng."
+              )
+              st.rerun()
+
+          else:
+            st.markdown(
+                f"#### Đang chỉnh sửa thông tin cho bản ghi ID: {rec_id}"
+            )
+            with st.form(f"form_sua_{rec_id}"):
+              e_ho_ten = st.text_input(
+                  "Họ và tên chủ sử dụng", value=str(current_record["ho_ten"])
+              )
+              e_sdt = st.text_input(
+                  "Số điện thoại",
+                  value=str(current_record["sdt"])
+                  if pd.notnull(current_record["sdt"])
+                  else "",
+              )
+              e_thon = st.selectbox(
+                  "Địa chỉ thửa đất (Thôn)",
+                  ["Làng Klăh", "Làng Hnáp", "Làng Khôn", "Làng Ring"],
+                  index=[
+                      "Làng Klăh",
+                      "Làng Hnáp",
+                      "Làng Khôn",
+                      "Làng Ring",
+                  ].index(current_record["thon_lang"])
+                  if current_record["thon_lang"]
+                  in ["Làng Klăh", "Làng Hnáp", "Làng Khôn", "Làng Ring"]
+                  else 0,
+              )
+              col_e1, col_e2 = st.columns(2)
+              with col_e1:
+                e_so_to = st.text_input(
+                    "Số tờ",
+                    value=str(current_record["so_to"])
+                    if pd.notnull(current_record["so_to"])
+                    else "",
+                )
+                e_so_thua = st.text_input(
+                    "Số thửa",
+                    value=str(current_record["so_thua"])
+                    if pd.notnull(current_record["so_thua"])
+                    else "",
+                )
+              with col_e2:
+                e_dien_tich = st.number_input(
+                    "Diện tích (m²)",
+                    min_value=0.0,
+                    value=float(current_record["dien_tich_khai_bao"])
+                    if pd.notnull(current_record["dien_tich_khai_bao"])
+                    else 0.0,
+                )
+                e_nguon_goc = st.text_input(
+                    "Nguồn gốc",
+                    value=str(current_record["nguon_goc"])
+                    if pd.notnull(current_record["nguon_goc"])
+                    else "",
+                )
+
+              e_submit = st.form_submit_button(
+                  "💾 Lưu thay đổi", type="primary"
+              )
+              if e_submit:
+                conn = sqlite3.connect(DB_FILE)
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                            UPDATE thia_dat 
+                            SET ho_ten = ?, sdt = ?, thon_lang = ?, so_to = ?, so_thua = ?, dien_tich_khai_bao = ?, nguon_goc = ?, dia_chi_thua_dat = ?
+                            WHERE id = ?
+                        """,
+                    (
+                        e_ho_ten,
+                        e_sdt,
+                        e_thon,
+                        e_so_to,
+                        e_so_thua,
+                        e_dien_tich,
+                        e_nguon_goc,
+                        e_thon,
+                        rec_id,
+                    ),
+                )
+                conn.commit()
+                conn.close()
+                st.success(
+                    f"Đã cập nhật thông tin thành công cho bản ghi ID {rec_id}!"
+                )
+                st.rerun()
 
       st.markdown("### 🔍 Kiểm tra nhanh vị trí / ranh giới từng thửa đất")
       if not df_hien_thi.empty:
