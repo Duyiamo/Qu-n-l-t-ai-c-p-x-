@@ -84,7 +84,7 @@ with tab1:
           "Địa chỉ thường trú (Thôn/Xóm, Xã...)"
       )
       thon_lang = st.text_input(
-          "Thôn / Làng tọa lạc thửa đất * (Ví dụ: Làng Hnáp, Klăh...)"
+          "Địa chỉ thửa đất * (Ví dụ: Làng Hnáp, Klăh...)"
       )
       so_to = st.text_input("Số tờ bản đồ (nếu biết)")
       so_thua = st.text_input("Số thửa đất (nếu biết)")
