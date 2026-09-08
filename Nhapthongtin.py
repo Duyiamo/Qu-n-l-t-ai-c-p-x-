@@ -62,10 +62,10 @@ st.set_page_config(
     page_title="Quản lý Hiện trạng Đất đai Cấp Xã", layout="wide"
 )
 
-st.title("🌾 Hệ thống Thu thập & Quản lý Hiện trạng Đất đai Cấp Xã")
+st.title("🌾 Hệ thống Thu thập & Quản lý Hiện trạng Đất đai tại xã Ia Mơ")
 st.markdown(
     "Ứng dụng hỗ trợ ghi nhận vị trí và ranh giới canh tác của hộ dân theo"
-    " từng thôn, kết xuất báo cáo chuyên nghiệp."
+    " từng thôn."
 )
 
 tab1, tab2 = st.tabs(
@@ -84,21 +84,21 @@ with tab1:
           "Địa chỉ thường trú (Thôn/Xóm, Xã...)"
       )
       thon_lang = st.text_input(
-          "Thôn / Làng tọa lạc thửa đất * (Ví dụ: Làng Hnáp, Thôn 1...)"
+          "Thôn / Làng tọa lạc thửa đất * (Ví dụ: Làng Hnáp, Klăh...)"
       )
       so_to = st.text_input("Số tờ bản đồ (nếu biết)")
       so_thua = st.text_input("Số thửa đất (nếu biết)")
 
     with col2:
       dia_chi_thua_dat = st.text_input(
-          "Mô tả thêm khu vực thửa đất (Ví dụ: Khu Đồng Lớn, giáp suối...)"
+          "Mô tả thêm khu vực thửa đất (Ví dụ: Khu Kênh Đông, giáp suối...)"
       )
       dien_tich = st.number_input(
           "Diện tích tự khai báo (m²) *", min_value=0.0, value=0.0, step=10.0
       )
       nguon_goc = st.text_input(
           "Nguồn gốc sử dụng đất tự kê khai (Ví dụ: Khai hoang, Nhận chuyển"
-          " nhượng...)"
+          " nhượng, tặng cho, thừa kế...)"
       )
       hien_trang = st.selectbox(
           "Nhóm hiện trạng sử dụng đất *", [
