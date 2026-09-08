@@ -1,8 +1,8 @@
-import io
 import json
-import os
 import sqlite3
 from datetime import datetime
+import io
+import os
 import folium
 from folium.plugins import Draw, LocateControl
 import openpyxl
@@ -65,7 +65,7 @@ st.set_page_config(
 st.title("🌾 Hệ thống Thu thập & Quản lý Hiện trạng Đất đai Cấp Xã")
 st.markdown(
     "Ứng dụng hỗ trợ ghi nhận vị trí và ranh giới canh tác của hộ dân theo"
-    " từng thôn, kết xuất báo cáo chuyên nghiệp."
+    " từng thôn và kết xuất báo cáo."
 )
 
 tab1, tab2 = st.tabs(
@@ -76,18 +76,18 @@ with tab1:
   st.header("Nhập thông tin và xác định vị trí / ranh giới thửa đất")
 
   with st.form("form_khai_bao"):
-    # Cấu hình danh sách 4 thôn của xã (Bạn có thể đổi tên trong ngoặc kép cho đúng thực tế)
     DANH_SACH_THON_XA = [
+        "Chọn Thôn / Làng...",
         "Làng Klăh",
         "Làng Hnáp",
-        "Làng Ring",
         "Làng Khôn",
+        "Làng Ring",
     ]
 
     col1, col2 = st.columns(2)
     with col1:
       ho_ten = st.text_input("Họ và tên chủ sử dụng *")
-      sdt = st.text_input("Số điện thoại")
+      sdt = st.text_input("Số điện thoại *")
       dia_chi_thuong_tru = st.text_input(
           "Địa chỉ thường trú (Thôn/Xóm, Xã...)"
       )
@@ -99,17 +99,18 @@ with tab1:
 
     with col2:
       dia_chi_thua_dat = st.text_input(
-          "Mô tả thêm khu vực thửa đất (Ví dụ: Khu Đồng Lớn, giáp suối...)"
+          "Địa chỉ / Mô tả vị trí thửa đất * (Ví dụ: Khu vực, giáp suối...)"
       )
       dien_tich = st.number_input(
           "Diện tích tự khai báo (m²) *", min_value=0.0, value=0.0, step=10.0
       )
       nguon_goc = st.text_input(
-          "Nguồn gốc sử dụng đất tự kê khai (Ví dụ: Khai hoang, Nhận chuyển"
+          "Nguồn gốc sử dụng đất tự kê khai * (Ví dụ: Khai hoang, Nhận chuyển"
           " nhượng...)"
       )
       hien_trang = st.selectbox(
           "Nhóm hiện trạng sử dụng đất *", [
+              "Chọn nhóm hiện trạng...",
               "Đất trồng lúa",
               "Đất trồng cây hàng năm khác",
               "Đất trồng cây lâu năm",
@@ -174,7 +175,6 @@ with tab1:
     )
     draw.add_to(m)
 
-    # Khung bản đồ rộng rãi 650 pixel
     output = st_folium(m, width="100%", height=650, key="map_input")
 
     submit_button = st.form_submit_button(
@@ -182,8 +182,21 @@ with tab1:
     )
 
     if submit_button:
-      if not ho_ten or not thon_lang:
-        st.error("Vui lòng nhập đầy đủ [Họ và tên] và chọn [Thôn / Làng]!")
+      # KIỂM TRA CÁC TRƯỜNG BẮT BUỘC
+      if (
+          not ho_ten.strip()
+          or not sdt.strip()
+          or thon_lang == "Chọn Thôn / Làng..."
+          or not dia_chi_thua_dat.strip()
+          or dien_tich <= 0
+          or not nguon_goc.strip()
+          or hien_trang == "Chọn nhóm hiện trạng..."
+      ):
+        st.error(
+            "⚠️ Vui lòng điền đầy đủ các thông tin bắt buộc có dấu (*): Họ tên,"
+            " Số điện thoại, Thôn tọa lạc, Địa chỉ thửa đất, Diện tích (>0),"
+            " Nguồn gốc và Nhóm hiện trạng!"
+        )
       else:
         lat, lon = None, None
         geo_type = None
