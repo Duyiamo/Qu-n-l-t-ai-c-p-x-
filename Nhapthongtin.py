@@ -130,11 +130,9 @@ with tab1:
 
     st.markdown("---")
     st.markdown(
-        "**🗺️ Hướng dẫn thao tác trên Điện thoại/Máy tính:**\n"
-        "- **Di chuyển bản đồ:** Dùng **2 ngón tay** để lướt/trượt hoặc thu"
-        " phóng bản đồ.\n"
-        "- **Chấm điểm / Khoanh vùng:** Dùng **1 ngón tay** chạm vào công cụ"
-        " vẽ ở góc bản đồ rồi chấm lên vị trí thửa đất."
+        "Xác định vị trí trên bản đồ vệ tinh: Bạn có thể chấm 1 điểm (Marker)"
+        " vào giữa thửa đất hoặc dùng công cụ vẽ đa giác/hình chữ nhật"
+        " (Polygon/Rectangle) để khoanh trọn ranh giới khu đất."
     )
 
     m = folium.Map(location=[13.494115, 107.748732], zoom_start=15)
