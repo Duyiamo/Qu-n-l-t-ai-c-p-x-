@@ -5,6 +5,7 @@ import io
 import os
 import folium
 from folium.plugins import Draw, LocateControl
+import geopandas as gpd
 import openpyxl
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 import pandas as pd
@@ -84,7 +85,7 @@ with tab1:
           "Địa chỉ thường trú (Thôn/Xóm, Xã...)"
       )
       thon_lang = st.text_input(
-          "Thôn / Làng tọa lạc thửa đất * (Ví dụ: Làng Hnáp, Thôn 1...)"
+          "Thôn / Làng tọa lạc thửa đất * (Ví dụ: Làng Hnáp, Làng Klăh...)"
       )
       so_to = st.text_input("Số tờ bản đồ (nếu biết)")
       so_thua = st.text_input("Số thửa đất (nếu biết)")
@@ -273,7 +274,7 @@ with tab1:
           conn.close()
 
 with tab2:
-  st.header("Khu vực Quản trị dành cho Cán bộ địa chính")
+  st.header("Khu vực Quản trị dành cho Cán bộ địa chính xã Ia Mơ")
 
   password = st.text_input(
       "Nhập mật khẩu quản lý để tiếp tục:", type="password"
@@ -336,6 +337,25 @@ with tab2:
           use_container_width=True,
       )
 
+      # TÍNH NĂNG TẢI FILE KML ĐỊA CHÍNH ĐỂ ĐỐI SOÁT
+      st.markdown("### 🗺️ Bản đồ nền địa chính (Tải file KML đối soát)")
+      uploaded_kml = st.file_uploader(
+          "Tải lên file KML bản đồ địa chính/quy hoạch của xã:", type=["kml"]
+      )
+      gdf_kml = None
+      if uploaded_kml is not None:
+        try:
+          gdf_kml = gpd.read_file(uploaded_kml)
+          st.success(
+              f"Đã đọc thành công file KML chứa {len(gdf_kml)} đối tượng bản"
+              " đồ!"
+          )
+        except Exception as e:
+          st.error(
+              "Không thể đọc file KML này. Vui lòng kiểm tra lại định dạng file."
+              f" Chi tiết: {e}"
+          )
+
       st.markdown("### 🔍 Kiểm tra nhanh vị trí / ranh giới từng thửa đất")
       if not df_hien_thi.empty:
         options_thua = []
@@ -374,6 +394,22 @@ with tab2:
                 overlay=True,
                 control=True,
             ).add_to(m_admin)
+
+            # Phủ lớp KML địa chính lên bản đồ admin nếu đã tải lên
+            if gdf_kml is not None:
+              try:
+                for _, geom_row in gdf_kml.iterrows():
+                  folium.GeoJson(
+                      geom_row["geometry"],
+                      style_function=lambda x: {
+                          "color": "orange",
+                          "weight": 1.5,
+                          "fillColor": "transparent",
+                          "fillOpacity": 0.1,
+                      },
+                  ).add_to(m_admin)
+              except Exception:
+                pass
 
             if (
                 row_chon["geo_type"] == "Polygon"
@@ -423,7 +459,7 @@ with tab2:
 
           ws.merge_cells("A1:Q1")
           ws["A1"] = (
-              "DANH SÁCH TỔNG HỢP HIỆN TRẠNG CANH TÁC ĐẤT ĐAI CẤP Xã"
+              "DANH SÁCH TỔNG HỢP HIỆN TRẠNG CANH TÁC ĐẤT ĐAI CẤP XÃ"
           ).upper()
           ws["A1"].font = Font(name="Times New Roman", size=14, bold=True)
           ws["A1"].alignment = Alignment(horizontal="center", vertical="center")
