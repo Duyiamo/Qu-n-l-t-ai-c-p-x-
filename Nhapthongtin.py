@@ -94,15 +94,13 @@ with tab1:
       dia_chi_thuong_tru = st.text_input(
           "Địa chỉ thường trú (Thôn/Xóm, Xã...)"
       )
-      thon_lang = st.selectbox("Thôn / Làng tọa lạc thửa đất *", DANH_SACH_THON_XA)
+      # Đã đổi tên nhãn thành Địa chỉ thửa đất (chọn 1 trong 4 thôn)
+      thon_lang = st.selectbox("Địa chỉ thửa đất *", DANH_SACH_THON_XA)
       so_to = st.text_input("Số tờ bản đồ (nếu biết)")
       so_thua = st.text_input("Số thửa đất (nếu biết)")
 
     with col2:
-      # Thay thế mô tả vị trí thành Địa chỉ thửa đất chuẩn xác
-      dia_chi_thua_dat = st.text_input(
-          "Địa chỉ thửa đất * (Ví dụ: Khu vực Đồng Lớn, Xóm dưới...)"
-      )
+      # Đã bỏ ô nhập text mô tả vị trí cũ, chuyển các trường còn lại lên đây cho cân đối
       dien_tich = st.number_input(
           "Diện tích tự khai báo (m²) *", min_value=0.0, value=0.0, step=10.0
       )
@@ -188,15 +186,14 @@ with tab1:
           not ho_ten.strip()
           or not sdt.strip()
           or thon_lang == "Chọn Thôn / Làng..."
-          or not dia_chi_thua_dat.strip()
           or dien_tich <= 0
           or not nguon_goc.strip()
           or hien_trang == "Chọn nhóm hiện trạng..."
       ):
         st.error(
             "⚠️ Vui lòng điền đầy đủ các thông tin bắt buộc có dấu (*): Họ tên,"
-            " Số điện thoại, Thôn tọa lạc, Địa chỉ thửa đất, Diện tích (>0),"
-            " Nguồn gốc và Nhóm hiện trạng!"
+            " Số điện thoại, Địa chỉ thửa đất (Thôn), Diện tích (>0), Nguồn"
+            " gốc và Nhóm hiện trạng!"
         )
       else:
         lat, lon = None, None
@@ -308,6 +305,8 @@ with tab1:
             st.error(warning_msg)
           else:
             ngay_hien_tai = datetime.now().strftime("%Y-%m-%d")
+            # Gán giá trị dia_chi_thua_dat bằng chính thon_lang để lưu vào CSDL đồng bộ
+            dia_chi_thua_dat_val = thon_lang
             cursor.execute(
                 """
                         INSERT INTO thia_dat (ho_ten, sdt, dia_chi_thuong_tru, thon_lang, so_to, so_thua, dia_chi_thua_dat, dien_tich_khai_bao, nguon_goc, hien_trang, hien_trang_chi_tiet, tinh_trang_so, ghi_chu, lat, lon, geo_type, geo_coords, ngay_tao)
@@ -320,7 +319,7 @@ with tab1:
                     thon_lang,
                     so_to,
                     so_thua,
-                    dia_chi_thua_dat,
+                    dia_chi_thua_dat_val,
                     dien_tich,
                     nguon_goc,
                     hien_trang,
@@ -556,7 +555,7 @@ with tab2:
 
           ws.merge_cells("A1:Q1")
           ws["A1"] = (
-              "DANH SÁCH TỔNG HỢP HIỆN TRẠNG CANH TÁC ĐẤT ĐAI CẤP XÃ"
+              "DANH SÁCH TỔNG HỢP HIỆN TRẠNG CANH TÁC ĐẤT ĐAI CẤP Xã"
           ).upper()
           ws["A1"].font = Font(name="Times New Roman", size=14, bold=True)
           ws["A1"].alignment = Alignment(horizontal="center", vertical="center")
@@ -767,7 +766,7 @@ with tab2:
   else:
     st.info("Vui lòng nhập mật khẩu quản lý để xem danh sách và xuất báo cáo.")
 
-# --- TAB 3: BẢO MẬT - TRA CỨU SỔ MỤC KÊ GỐC (3 Ô TÌM KIẾM ĐỘC LẬP CHUẨN XÁC) ---
+# --- TAB 3: BẢO MẬT - TRA CỨU SỔ MỤC KÊ GỐC ---
 with tab3:
   st.header("📂 Khu vực bảo mật: Tra cứu Sổ mục kê & GCN gốc")
 
