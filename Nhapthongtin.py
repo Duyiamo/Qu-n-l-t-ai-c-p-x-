@@ -1,12 +1,10 @@
-import io
 import json
-import os
 import sqlite3
 from datetime import datetime
-import zipfile
+import io
+import os
 import folium
 from folium.plugins import Draw, LocateControl
-import geopandas as gpd
 import openpyxl
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 import pandas as pd
@@ -338,45 +336,6 @@ with tab2:
           use_container_width=True,
       )
 
-      # TÍNH NĂNG TẢI FILE KML HOẶC KMZ ĐỊA CHÍNH ĐỂ ĐỐI SOÁT
-      st.markdown("### 🗺️ Bản đồ nền địa chính (Tải file KML / KMZ đối soát)")
-      uploaded_map_file = st.file_uploader(
-          "Tải lên file KML hoặc KMZ bản đồ địa chính/quy hoạch của xã:",
-          type=["kml", "kmz"],
-      )
-      gdf_kml = None
-      if uploaded_map_file is not None:
-        try:
-          file_extension = uploaded_map_file.name.split(".")[-1].lower()
-          bytes_data = uploaded_map_file.getvalue()
-
-          if file_extension == "kmz":
-            with zipfile.ZipFile(io.BytesIO(bytes_data), "r") as z:
-              kml_filenames = [
-                  f for f in z.namelist() if f.endswith(".kml")
-              ]
-              if kml_filenames:
-                with z.open(kml_filenames[0]) as kml_file:
-                  kml_bytes = kml_file.read()
-                  gdf_kml = gpd.read_file(io.BytesIO(kml_bytes), driver="KML")
-              else:
-                st.error("Không tìm thấy file KML bên trong gói nén KMZ này.")
-          else:
-            gdf_kml = gpd.read_file(io.BytesIO(bytes_data), driver="KML")
-
-          if gdf_kml is not None and not gdf_kml.empty:
-            st.success(
-                f"Đã đọc thành công bản đồ chứa {len(gdf_kml)} đối tượng ranh"
-                " giới!"
-            )
-          else:
-            st.warning("File bản đồ không chứa đối tượng hình học nào.")
-        except Exception as e:
-          st.error(
-              "Không thể đọc file bản đồ này. Vui lòng kiểm tra lại định dạng"
-              f" file. Chi tiết: {e}"
-          )
-
       st.markdown("### 🔍 Kiểm tra nhanh vị trí / ranh giới từng thửa đất")
       if not df_hien_thi.empty:
         options_thua = []
@@ -415,22 +374,6 @@ with tab2:
                 overlay=True,
                 control=True,
             ).add_to(m_admin)
-
-            # Phủ lớp KML/KMZ địa chính lên bản đồ admin nếu đã tải lên
-            if gdf_kml is not None:
-              try:
-                for _, geom_row in gdf_kml.iterrows():
-                  folium.GeoJson(
-                      geom_row["geometry"],
-                      style_function=lambda x: {
-                          "color": "orange",
-                          "weight": 1.5,
-                          "fillColor": "transparent",
-                          "fillOpacity": 0.1,
-                      },
-                  ).add_to(m_admin)
-              except Exception:
-                pass
 
             if (
                 row_chon["geo_type"] == "Polygon"
