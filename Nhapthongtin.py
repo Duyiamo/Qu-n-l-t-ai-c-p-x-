@@ -1,8 +1,8 @@
+import io
 import json
+import os
 import sqlite3
 from datetime import datetime
-import io
-import os
 import folium
 from folium.plugins import Draw, LocateControl
 import openpyxl
@@ -547,7 +547,7 @@ with tab2:
   else:
     st.info("Vui lòng nhập mật khẩu quản lý để xem danh sách và xuất báo cáo.")
 
-# --- TAB 3: BẢO MẬT - CHỈ DÀNH RIÊNG CHO QUẢN TRỊ TRA CỨU SỔ MỤC KÊ GỐC ---
+# --- TAB 3: BẢO MẬT - TRA CỨU SỔ MỤC KÊ GỐC (TÁCH 2 Ô TÌM KIẾM RIÊNG BIỆT) ---
 with tab3:
   st.header("📂 Khu vực bảo mật: Tra cứu Sổ mục kê & GCN gốc")
 
@@ -560,47 +560,125 @@ with tab3:
   if password_so == ADMIN_PASSWORD:
     st.success("Xác thực thành công! Cán bộ có quyền truy cập sổ gốc.")
     st.markdown(
-        "Tải lên file Excel chứa dữ liệu sổ mục kê gốc hoặc sổ cấp GCN của xã"
-        " để tra cứu tức thì."
+        "Tải lên file Excel sổ mục kê gốc của xã để tra cứu dữ liệu nhanh"
+        " chóng."
     )
 
     uploaded_so_goc = st.file_uploader(
-        "Tải lên file Excel Sổ mục kê / Sổ GCN gốc của xã:",
+        "Tải lên file Excel Sổ mục kê gốc của xã:",
         type=["xlsx", "xls"],
         key="uploader_so",
     )
 
     if uploaded_so_goc is not None:
       try:
-        df_so_goc = pd.read_excel(uploaded_so_goc)
-        st.success(
-            f"Đã tải lên thành công sổ gốc chứa {len(df_so_goc)} dòng dữ liệu!"
-        )
+        df_raw = pd.read_excel(uploaded_so_goc, header=None)
 
-        st.markdown("### 🔍 Nhập từ khóa để tra cứu:")
-        keyword = st.text_input(
-            "Nhập Họ tên chủ sử dụng, Số thửa, Số tờ hoặc Số GCN cần tìm:",
-            key="input_keyword_so",
-        )
+        header_row_idx = None
+        for idx, row in df_raw.iterrows():
+          row_str = str(row.values)
+          if "Tờ bản đồ" in row_str or "Thửa đất" in row_str:
+            header_row_idx = idx
+            break
 
-        if keyword.strip() != "":
-          mask = df_so_goc.astype(str).apply(
-              lambda col: col.str.contains(keyword, case=False, na=False)
-          ).any(axis=1)
-          df_ket_qua = df_so_goc[mask]
+        if header_row_idx is not None:
+          df_so_goc = pd.read_excel(uploaded_so_goc, skiprows=header_row_idx)
+          df_so_goc = df_so_goc.loc[
+              :, ~df_so_goc.columns.str.contains("^Unnamed")
+          ]
+          # Gán tên cột chuẩn theo file mẫu rptSMK1 để dễ tra cứu chính xác
+          if len(df_so_goc.columns) >= 4:
+            df_so_goc.columns = [
+                "So_to",
+                "So_thua",
+                "Ten_chu",
+                "Ma_doi_tuong",
+                "Dien_tich_ht",
+                "Loai_dat_ht",
+                "Dien_tich_gcn",
+                "Loai_dat_gcn",
+                "Ghi_chu",
+            ][
+                : len(df_so_goc.columns)
+            ]
+          st.success(
+              f"Đã chuẩn hóa và đọc thành công sổ mục kê chứa"
+              f" {len(df_so_goc)} dòng dữ liệu!"
+          )
+        else:
+          df_so_goc = pd.read_excel(uploaded_so_goc)
+          df_so_goc = df_so_goc.loc[
+              :, ~df_so_goc.columns.str.contains("^Unnamed")
+          ]
 
+        st.markdown("### 🔍 Bộ lọc tra cứu thông tin sổ mục kê gốc:")
+
+        col_tc1, col_tc2 = st.columns(2)
+        with col_tc1:
+          kw_ten = st.text_input(
+              "👤 1. Tra cứu theo Tên chủ sử dụng:",
+              key="input_kw_ten",
+              placeholder="Ví dụ: Lê Vĩnh Lợi",
+          )
+        with col_tc2:
+          kw_to_thua = st.text_input(
+              "🗺️ 2. Tra cứu theo Số tờ / Số thửa:",
+              key="input_kw_to_thua",
+              placeholder="Ví dụ: Thửa số 2 hoặc Tờ số 8",
+          )
+
+        df_ket_qua = df_so_goc.copy()
+
+        # Lọc theo tên chủ sử dụng nếu có nhập
+        if kw_ten.strip() != "":
+          col_name_match = None
+          for col in df_ket_qua.columns:
+            if "tên" in str(col).lower() or "chủ" in str(col).lower():
+              col_name_match = col
+              break
+          if col_name_match:
+            df_ket_qua = df_ket_qua[
+                df_ket_qua[col_name_match]
+                .astype(str)
+                .str.contains(kw_ten.strip(), case=False, na=False)
+            ]
+          else:
+            df_ket_qua = df_ket_qua[
+                df_ket_qua.astype(str)
+                .apply(
+                    lambda c: c.str.contains(
+                        kw_ten.strip(), case=False, na=False
+                    )
+                )
+                .any(axis=1)
+            ]
+
+        # Lọc theo số tờ / số thửa nếu có nhập
+        if kw_to_thua.strip() != "":
+          df_ket_qua = df_ket_qua[
+              df_ket_qua.astype(str)
+              .apply(
+                  lambda c: c.str.contains(
+                      kw_to_thua.strip(), case=False, na=False
+                  )
+              )
+              .any(axis=1)
+          ]
+
+        if kw_ten.strip() != "" or kw_to_thua.strip() != "":
           st.markdown(
-              f"Kết quả tìm kiếm cho từ khóa: **'{keyword}'** (Tìm thấy"
-              f" {len(df_ket_qua)} kết quả):"
+              f"Kết quả tìm kiếm (Tìm thấy {len(df_ket_qua)} dòng phù hợp):"
           )
           if not df_ket_qua.empty:
             st.dataframe(df_ket_qua, use_container_width=True)
           else:
-            st.warning("Không tìm thấy thông tin phù hợp trong sổ mục kê gốc.")
+            st.warning(
+                "Không tìm thấy thông tin phù hợp với từ khóa bạn vừa nhập."
+            )
         else:
           st.info(
-              "Vui lòng nhập từ khóa vào ô bên trên để tra cứu lịch sử thửa"
-              " đất."
+              "💡 Hãy nhập từ khóa vào một trong hai ô trên (hoặc cả hai) để tra"
+              " cứu."
           )
 
       except Exception as e:
@@ -610,8 +688,8 @@ with tab3:
         )
     else:
       st.info(
-          "💡 Hướng dẫn: Tải file Excel sổ mục kê hoặc sổ cấp GCN của xã lên"
-          " đây để tra cứu dữ liệu gốc nhanh chóng."
+          "💡 Hướng dẫn: Tải file Excel sổ mục kê của xã lên đây để kích hoạt"
+          " hệ thống tra cứu theo 2 ô độc lập."
       )
 
   elif password_so != "":
