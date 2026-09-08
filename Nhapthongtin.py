@@ -547,7 +547,7 @@ with tab2:
   else:
     st.info("Vui lòng nhập mật khẩu quản lý để xem danh sách và xuất báo cáo.")
 
-# --- TAB 3: BẢO MẬT - TRA CỨU SỔ MỤC KÊ GỐC (TÁCH 2 Ô TÌM KIẾM RIÊNG BIỆT) ---
+# --- TAB 3: BẢO MẬT - TRA CỨU SỔ MỤC KÊ GỐC (TÁCH 3 Ô TÌM KIẾM CHUẨN XÁC) ---
 with tab3:
   st.header("📂 Khu vực bảo mật: Tra cứu Sổ mục kê & GCN gốc")
 
@@ -586,7 +586,6 @@ with tab3:
           df_so_goc = df_so_goc.loc[
               :, ~df_so_goc.columns.str.contains("^Unnamed")
           ]
-          # Gán tên cột chuẩn theo file mẫu rptSMK1 để dễ tra cứu chính xác
           if len(df_so_goc.columns) >= 4:
             df_so_goc.columns = [
                 "So_to",
@@ -611,25 +610,40 @@ with tab3:
               :, ~df_so_goc.columns.str.contains("^Unnamed")
           ]
 
-        st.markdown("### 🔍 Bộ lọc tra cứu thông tin sổ mục kê gốc:")
+        st.markdown(
+            "### 🔍 Bộ lọc tra cứu thông tin (Gõ từ khóa hoặc nhập số):"
+        )
 
-        col_tc1, col_tc2 = st.columns(2)
+        col_tc1, col_tc2, col_tc3 = st.columns(3)
         with col_tc1:
           kw_ten = st.text_input(
-              "👤 1. Tra cứu theo Tên chủ sử dụng:",
+              "👤 1. Tên chủ sử dụng:",
               key="input_kw_ten",
               placeholder="Ví dụ: Lê Vĩnh Lợi",
           )
         with col_tc2:
-          kw_to_thua = st.text_input(
-              "🗺️ 2. Tra cứu theo Số tờ / Số thửa:",
-              key="input_kw_to_thua",
-              placeholder="Ví dụ: Thửa số 2 hoặc Tờ số 8",
+          kw_so_to = st.text_input(
+              "🗺️ 2. Số tờ bản đồ:",
+              key="input_kw_so_to",
+              placeholder="Chỉ nhập số (Ví dụ: 8)",
+          )
+        with col_tc3:
+          kw_so_thua = st.text_input(
+              "🏡 3. Số thửa đất:",
+              key="input_kw_so_thua",
+              placeholder="Chỉ nhập số (Ví dụ: 12)",
           )
 
         df_ket_qua = df_so_goc.copy()
 
-        # Lọc theo tên chủ sử dụng nếu có nhập
+        # Làm sạch dữ liệu trong dataframe để tìm kiếm chính xác không bị lỗi
+        for col in df_ket_qua.columns:
+          df_ket_qua[col] = df_ket_qua[col].astype(str).str.strip()
+          df_ket_qua[col] = df_ket_qua[col].replace(
+              {"nan": "", "None": "", "0.0": "0"}
+          )
+
+        # 1. Lọc theo Tên chủ sử dụng
         if kw_ten.strip() != "":
           col_name_match = None
           for col in df_ket_qua.columns:
@@ -639,33 +653,73 @@ with tab3:
           if col_name_match:
             df_ket_qua = df_ket_qua[
                 df_ket_qua[col_name_match]
-                .astype(str)
-                .str.contains(kw_ten.strip(), case=False, na=False)
+                .str.lower()
+                .str.contains(kw_ten.strip().lower(), na=False)
             ]
           else:
             df_ket_qua = df_ket_qua[
-                df_ket_qua.astype(str)
-                .apply(
-                    lambda c: c.str.contains(
-                        kw_ten.strip(), case=False, na=False
-                    )
+                df_ket_qua.apply(
+                    lambda row: row.astype(str)
+                    .str.lower()
+                    .str.contains(kw_ten.strip().lower())
+                    .any(),
+                    axis=1,
                 )
-                .any(axis=1)
             ]
 
-        # Lọc theo số tờ / số thửa nếu có nhập
-        if kw_to_thua.strip() != "":
-          df_ket_qua = df_ket_qua[
-              df_ket_qua.astype(str)
-              .apply(
-                  lambda c: c.str.contains(
-                      kw_to_thua.strip(), case=False, na=False
-                  )
-              )
-              .any(axis=1)
-          ]
+        # 2. Lọc theo Số tờ bản đồ
+        if kw_so_to.strip() != "":
+          col_to_match = None
+          for col in df_ket_qua.columns:
+            if "tờ" in str(col).lower() or "so_to" in str(col).lower():
+              col_to_match = col
+              break
+          search_to = kw_so_to.strip()
+          if col_to_match:
+            df_ket_qua = df_ket_qua[
+                df_ket_qua[col_to_match]
+                .str.replace(".0", "", regex=False)
+                .str.contains(search_to, na=False)
+            ]
+          else:
+            df_ket_qua = df_ket_qua[
+                df_ket_qua.apply(
+                    lambda row: row.astype(str)
+                    .str.contains(search_to)
+                    .any(),
+                    axis=1,
+                )
+            ]
 
-        if kw_ten.strip() != "" or kw_to_thua.strip() != "":
+        # 3. Lọc theo Số thửa đất
+        if kw_so_thua.strip() != "":
+          col_thua_match = None
+          for col in df_ket_qua.columns:
+            if "thửa" in str(col).lower() or "so_thua" in str(col).lower():
+              col_thua_match = col
+              break
+          search_thua = kw_so_thua.strip()
+          if col_thua_match:
+            df_ket_qua = df_ket_qua[
+                df_ket_qua[col_thua_match]
+                .str.replace(".0", "", regex=False)
+                .str.contains(search_thua, na=False)
+            ]
+          else:
+            df_ket_qua = df_ket_qua[
+                df_ket_qua.apply(
+                    lambda row: row.astype(str)
+                    .str.contains(search_thua)
+                    .any(),
+                    axis=1,
+                )
+            ]
+
+        if (
+            kw_ten.strip() != ""
+            or kw_so_to.strip() != ""
+            or kw_so_thua.strip() != ""
+        ):
           st.markdown(
               f"Kết quả tìm kiếm (Tìm thấy {len(df_ket_qua)} dòng phù hợp):"
           )
@@ -677,8 +731,7 @@ with tab3:
             )
         else:
           st.info(
-              "💡 Hãy nhập từ khóa vào một trong hai ô trên (hoặc cả hai) để tra"
-              " cứu."
+              "💡 Hãy nhập thông tin vào các ô tìm kiếm phía trên để tra cứu."
           )
 
       except Exception as e:
@@ -689,7 +742,7 @@ with tab3:
     else:
       st.info(
           "💡 Hướng dẫn: Tải file Excel sổ mục kê của xã lên đây để kích hoạt"
-          " hệ thống tra cứu theo 2 ô độc lập."
+          " hệ thống tra cứu chuyên sâu."
       )
 
   elif password_so != "":
