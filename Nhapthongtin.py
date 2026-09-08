@@ -94,13 +94,14 @@ with tab1:
       dia_chi_thuong_tru = st.text_input(
           "Địa chỉ thường trú (Thôn/Xóm, Xã...)"
       )
-      thon_lang = st.selectbox("Địa chỉ thửa đất *", DANH_SACH_THON_XA)
+      thon_lang = st.selectbox("Thôn / Làng tọa lạc thửa đất *", DANH_SACH_THON_XA)
       so_to = st.text_input("Số tờ bản đồ (nếu biết)")
       so_thua = st.text_input("Số thửa đất (nếu biết)")
 
     with col2:
+      # Thay thế mô tả vị trí thành Địa chỉ thửa đất chuẩn xác
       dia_chi_thua_dat = st.text_input(
-          "Địa chỉ / Mô tả vị trí thửa đất * (Ví dụ: Khu vực, giáp suối...)"
+          "Địa chỉ thửa đất * (Ví dụ: Khu vực Đồng Lớn, Xóm dưới...)"
       )
       dien_tich = st.number_input(
           "Diện tích tự khai báo (m²) *", min_value=0.0, value=0.0, step=10.0
@@ -855,14 +856,12 @@ with tab3:
 
         df_ket_qua = df_so_goc.copy()
 
-        # Làm sạch dữ liệu để tránh lỗi tìm kiếm
         for col in df_ket_qua.columns:
           df_ket_qua[col] = df_ket_qua[col].astype(str).str.strip()
           df_ket_qua[col] = df_ket_qua[col].replace(
               {"nan": "", "None": "", "0.0": "0"}
           )
 
-        # 1. Lọc theo Tên chủ sử dụng (Xử lý thông minh quét toàn bộ dòng nếu không khớp tên cột)
         if kw_ten.strip() != "":
           col_name_match = None
           for col in df_ket_qua.columns:
@@ -886,7 +885,6 @@ with tab3:
                 )
             ]
 
-        # 2. Lọc theo Số tờ bản đồ
         if kw_so_to.strip() != "":
           col_to_match = None
           for col in df_ket_qua.columns:
@@ -910,7 +908,6 @@ with tab3:
                 )
             ]
 
-        # 3. Lọc theo Số thửa đất
         if kw_so_thua.strip() != "":
           col_thua_match = None
           for col in df_ket_qua.columns:
