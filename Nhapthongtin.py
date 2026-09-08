@@ -8,6 +8,7 @@ from folium.plugins import Draw, LocateControl
 import openpyxl
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 import pandas as pd
+from shapely.geometry import Polygon, shape
 import streamlit as st
 from streamlit_folium import st_folium
 
@@ -91,9 +92,7 @@ with tab1:
       dia_chi_thuong_tru = st.text_input(
           "Địa chỉ thường trú (Thôn/Xóm, Xã...)"
       )
-      thon_lang = st.selectbox(
-          "Địa chỉ thửa đất *", DANH_SACH_THON_XA
-      )
+      thon_lang = st.selectbox("Địa chỉ thửa đất *", DANH_SACH_THON_XA)
       so_to = st.text_input("Số tờ bản đồ (nếu biết)")
       so_thua = st.text_input("Số thửa đất (nếu biết)")
 
@@ -182,7 +181,6 @@ with tab1:
     )
 
     if submit_button:
-      # KIỂM TRA CÁC TRƯỜNG BẮT BUỘC
       if (
           not ho_ten.strip()
           or not sdt.strip()
@@ -201,6 +199,7 @@ with tab1:
         lat, lon = None, None
         geo_type = None
         geo_coords = None
+        new_polygon_shapely = None
 
         if output:
           if output.get("all_drawings") and len(output["all_drawings"]) > 0:
@@ -215,6 +214,11 @@ with tab1:
                 pts = coords[0]
                 lon = sum(pt[0] for pt in pts) / len(pts)
                 lat = sum(pt[1] for pt in pts) / len(pts)
+                # Tạo đối tượng hình học Shapely để kiểm tra chồng lấn
+                try:
+                  new_polygon_shapely = Polygon([(pt[0], pt[1]) for pt in pts])
+                except Exception:
+                  pass
               elif geo_type == "Point" and len(coords) >= 2:
                 lon = coords[0]
                 lat = coords[1]
@@ -238,7 +242,11 @@ with tab1:
           conn = sqlite3.connect(DB_FILE)
           cursor = conn.cursor()
 
+          # 1. KIỂM TRA TRÙNG LẶP TỌA ĐỘ HOẶC SỐ THỬA / SỐ TỜ
           is_duplicate = False
+          warning_msg = ""
+
+          # Kiểm tra trùng tọa độ chính xác
           cursor.execute(
               """
                     SELECT COUNT(*) FROM thia_dat 
@@ -246,15 +254,64 @@ with tab1:
                 """,
               (lat, lon),
           )
-          count = cursor.fetchone()[0]
-          if count > 0:
+          if cursor.fetchone()[0] > 0:
             is_duplicate = True
-
-          if is_duplicate:
-            st.error(
-                "⚠️ Vị trí thửa đất này đã được kê khai vào hệ thống! Xin vui"
-                " lòng chọn vị trí khác trên bản đồ."
+            warning_msg = (
+                "⚠️ Vị trí tọa độ thửa đất này đã được kê khai vào hệ thống trước"
+                " đó!"
             )
+
+          # Kiểm tra trùng Số tờ, Số thửa (nếu người dân có nhập)
+          elif so_to.strip() != "" and so_thua.strip() != "":
+            cursor.execute(
+                """
+                        SELECT ho_ten FROM thia_dat 
+                        WHERE thon_lang = ? AND so_to = ? AND so_thua = ?
+                    """,
+                (thon_lang, so_to.strip(), so_thua.strip()),
+            )
+            existing_owner = cursor.fetchone()
+            if existing_owner:
+              is_duplicate = True
+              warning_msg = (
+                  f"⚠️ Thửa {so_thua}, Tờ bản đồ {so_to} tại {thon_lang} đã được"
+                  f" kê khai bởi ông/bà **{existing_owner[0]}**! Vui lòng kiểm"
+                  " tra lại thông tin hoặc liên hệ UBND xã để kiểm tra."
+              )
+
+          # 2. KIỂM TRA CHỒNG LẤN RANH GIỚI (POLY_OVERLAP) NẾU LÀ VẼ ĐA GIÁC
+          overlap_detected = False
+          if not is_duplicate and new_polygon_shapely is not None:
+            cursor.execute(
+                "SELECT id, ho_ten, geo_type, geo_coords FROM thia_dat WHERE"
+                " geo_type = 'Polygon'"
+            )
+            all_records = cursor.fetchall()
+            for rec in all_records:
+              try:
+                old_coords = json.loads(rec[3])
+                old_pts = [(pt[0], pt[1]) for pt in old_coords[0]]
+                old_poly = Polygon(old_pts)
+                # Nếu diện tích giao nhau lớn hơn một ngưỡng nhỏ (ví dụ có sự chồng lấn đáng kể)
+                if new_polygon_shapely.intersects(old_poly):
+                  intersection_area = new_polygon_shapely.intersection(
+                      old_poly
+                  ).area
+                  if (
+                      intersection_area > 0.0000001
+                  ):  # Ngưỡng phát hiện giao nhau
+                    overlap_detected = True
+                    warning_msg = (
+                        "⚠️ Ranh giới bạn vẽ bị chồng lấn lên thửa đất đã kê khai"
+                        f" của ông/bà **{rec[1]}** (Mã ID: {rec[0]}). Vui lòng"
+                        " khoanh vẽ lại ranh giới chính xác hoặc liên hệ UBND xã để kiểm tra."
+                    )
+                    break
+              except Exception:
+                pass
+
+          if is_duplicate or overlap_detected:
+            st.error(warning_msg)
           else:
             ngay_hien_tai = datetime.now().strftime("%Y-%m-%d")
             cursor.execute(
@@ -394,6 +451,31 @@ with tab2:
                 control=True,
             ).add_to(m_admin)
 
+            # --- TÍNH NĂNG ADMIN: QUÉT VÀ CẢNH BÁO CHỒNG LẤN (TÔ MÀU ĐỎ) ---
+            # Vẽ tất cả các thửa đất khác trong cùng thôn để đối soát tranh chấp
+            for _, other_r in df_hien_thi.iterrows():
+              if (
+                  other_r["id"] != selected_id
+                  and other_r["geo_type"] == "Polygon"
+                  and pd.notnull(other_r["geo_coords"])
+              ):
+                try:
+                  o_coords = json.loads(other_r["geo_coords"])
+                  o_pts = [[pt[1], pt[0]] for pt in o_coords[0]]
+                  # Vẽ màu cam nhạt cho các thửa xung quanh để tham khảo
+                  folium.Polygon(
+                      locations=o_pts,
+                      color="orange",
+                      weight=1,
+                      fill=True,
+                      fill_color="orange",
+                      fill_opacity=0.15,
+                      popup=f"Thửa tham khảo: {other_r['ho_ten']}",
+                  ).add_to(m_admin)
+                except Exception:
+                  pass
+
+            # Vẽ thửa đất đang chọn kiểm tra (Nếu có chồng lấn với thửa khác, tô màu ĐỎ cảnh báo)
             if (
                 row_chon["geo_type"] == "Polygon"
                 and pd.notnull(row_chon["geo_coords"])
@@ -402,20 +484,55 @@ with tab2:
                 coords = json.loads(row_chon["geo_coords"])
                 if len(coords) > 0:
                   folium_pts = [[pt[1], pt[0]] for pt in coords[0]]
+                  current_poly = Polygon([(pt[0], pt[1]) for pt in coords[0]])
+
+                  # Kiểm tra xem thửa này có đang giao cắt với thửa nào khác trong hệ thống không
+                  is_overlapping_admin = False
+                  for _, other_r in df.iterrows():
+                    if (
+                        other_r["id"] != row_chon["id"]
+                        and other_r["geo_type"] == "Polygon"
+                        and pd.notnull(other_r["geo_coords"])
+                    ):
+                      try:
+                        o_coords = json.loads(other_r["geo_coords"])
+                        o_poly = Polygon([(pt[0], pt[1]) for pt in o_coords[0]])
+                        if current_poly.intersects(o_poly):
+                          if (
+                              current_poly.intersection(o_poly).area
+                              > 0.0000001
+                          ):
+                            is_overlapping_admin = True
+                            break
+                      except Exception:
+                        pass
+
+                  # Nếu chồng lấn -> Tô màu ĐỎ cảnh báo cho cán bộ, nếu bình thường -> Tô màu Xanh/Vàng
+                  poly_color = "red" if is_overlapping_admin else "yellow"
+                  poly_fill_color = "red" if is_overlapping_admin else "blue"
+                  poly_opacity = 0.4 if is_overlapping_admin else 0.3
+
+                  status_text = (
+                      "⚠️ CẢNH BÁO: CHỒNG LẤN TRANH CHẤP!"
+                      if is_overlapping_admin
+                      else "Ranh giới hợp lệ"
+                  )
+
                   popup_poly = f"""
                                     <div style="width: 220px; font-size: 13px;">
                                         <b>{row_chon['ho_ten']}</b><br>
                                         <b>Thôn:</b> {row_chon['thon_lang']}<br>
-                                        <b>Diện tích:</b> {row_chon['dien_tich_khai_bao']} m²
+                                        <b>Diện tích:</b> {row_chon['dien_tich_khai_bao']} m²<br>
+                                        <b style="color: red;">{status_text}</b>
                                     </div>
                                     """
                   folium.Polygon(
                       locations=folium_pts,
-                      color="yellow",
+                      color=poly_color,
                       weight=3,
                       fill=True,
-                      fill_color="blue",
-                      fill_opacity=0.3,
+                      fill_color=poly_fill_color,
+                      fill_opacity=poly_opacity,
                       popup=folium.Popup(popup_poly, max_width=300),
                   ).add_to(m_admin)
               except Exception:
