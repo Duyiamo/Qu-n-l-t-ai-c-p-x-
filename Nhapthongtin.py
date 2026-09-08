@@ -69,9 +69,11 @@ st.markdown(
     " từng thôn và kết xuất báo cáo."
 )
 
-tab1, tab2 = st.tabs(
-    ["📝 1. Khai báo / Cập nhật thửa đất", "🔒 2. Khu vực Quản trị (Admin)"]
-)
+tab1, tab2, tab3 = st.tabs([
+    "📝 1. Khai báo / Cập nhật thửa đất",
+    "🔒 2. Khu vực Quản trị (Admin)",
+    "📂 3. Tra cứu Sổ mục kê & GCN gốc",
+])
 
 with tab1:
   st.header("Nhập thông tin và xác định vị trí / ranh giới thửa đất")
@@ -214,7 +216,6 @@ with tab1:
                 pts = coords[0]
                 lon = sum(pt[0] for pt in pts) / len(pts)
                 lat = sum(pt[1] for pt in pts) / len(pts)
-                # Tạo đối tượng hình học Shapely để kiểm tra chồng lấn
                 try:
                   new_polygon_shapely = Polygon([(pt[0], pt[1]) for pt in pts])
                 except Exception:
@@ -242,11 +243,9 @@ with tab1:
           conn = sqlite3.connect(DB_FILE)
           cursor = conn.cursor()
 
-          # 1. KIỂM TRA TRÙNG LẶP TỌA ĐỘ HOẶC SỐ THỬA / SỐ TỜ
           is_duplicate = False
           warning_msg = ""
 
-          # Kiểm tra trùng tọa độ chính xác
           cursor.execute(
               """
                     SELECT COUNT(*) FROM thia_dat 
@@ -260,8 +259,6 @@ with tab1:
                 "⚠️ Vị trí tọa độ thửa đất này đã được kê khai vào hệ thống trước"
                 " đó!"
             )
-
-          # Kiểm tra trùng Số tờ, Số thửa (nếu người dân có nhập)
           elif so_to.strip() != "" and so_thua.strip() != "":
             cursor.execute(
                 """
@@ -276,10 +273,9 @@ with tab1:
               warning_msg = (
                   f"⚠️ Thửa {so_thua}, Tờ bản đồ {so_to} tại {thon_lang} đã được"
                   f" kê khai bởi ông/bà **{existing_owner[0]}**! Vui lòng kiểm"
-                  " tra lại thông tin hoặc liên hệ UBND xã để kiểm tra."
+                  " tra lại thông tin."
               )
 
-          # 2. KIỂM TRA CHỒNG LẤN RANH GIỚI (POLY_OVERLAP) NẾU LÀ VẼ ĐA GIÁC
           overlap_detected = False
           if not is_duplicate and new_polygon_shapely is not None:
             cursor.execute(
@@ -292,19 +288,16 @@ with tab1:
                 old_coords = json.loads(rec[3])
                 old_pts = [(pt[0], pt[1]) for pt in old_coords[0]]
                 old_poly = Polygon(old_pts)
-                # Nếu diện tích giao nhau lớn hơn một ngưỡng nhỏ (ví dụ có sự chồng lấn đáng kể)
                 if new_polygon_shapely.intersects(old_poly):
                   intersection_area = new_polygon_shapely.intersection(
                       old_poly
                   ).area
-                  if (
-                      intersection_area > 0.0000001
-                  ):  # Ngưỡng phát hiện giao nhau
+                  if intersection_area > 0.0000001:
                     overlap_detected = True
                     warning_msg = (
                         "⚠️ Ranh giới bạn vẽ bị chồng lấn lên thửa đất đã kê khai"
                         f" của ông/bà **{rec[1]}** (Mã ID: {rec[0]}). Vui lòng"
-                        " khoanh vẽ lại ranh giới chính xác hoặc liên hệ UBND xã để kiểm tra."
+                        " khoanh vẽ lại ranh giới chính xác."
                     )
                     break
               except Exception:
@@ -352,7 +345,7 @@ with tab2:
   st.header("Khu vực Quản trị dành cho Cán bộ địa chính")
 
   password = st.text_input(
-      "Nhập mật khẩu quản lý để tiếp tục:", type="password"
+      "Nhập mật khẩu quản lý để tiếp tục:", type="password", key="pwd_admin"
   )
   ADMIN_PASSWORD = "admin123"
 
@@ -451,8 +444,6 @@ with tab2:
                 control=True,
             ).add_to(m_admin)
 
-            # --- TÍNH NĂNG ADMIN: QUÉT VÀ CẢNH BÁO CHỒNG LẤN (TÔ MÀU ĐỎ) ---
-            # Vẽ tất cả các thửa đất khác trong cùng thôn để đối soát tranh chấp
             for _, other_r in df_hien_thi.iterrows():
               if (
                   other_r["id"] != selected_id
@@ -462,7 +453,6 @@ with tab2:
                 try:
                   o_coords = json.loads(other_r["geo_coords"])
                   o_pts = [[pt[1], pt[0]] for pt in o_coords[0]]
-                  # Vẽ màu cam nhạt cho các thửa xung quanh để tham khảo
                   folium.Polygon(
                       locations=o_pts,
                       color="orange",
@@ -475,7 +465,6 @@ with tab2:
                 except Exception:
                   pass
 
-            # Vẽ thửa đất đang chọn kiểm tra (Nếu có chồng lấn với thửa khác, tô màu ĐỎ cảnh báo)
             if (
                 row_chon["geo_type"] == "Polygon"
                 and pd.notnull(row_chon["geo_coords"])
@@ -486,7 +475,6 @@ with tab2:
                   folium_pts = [[pt[1], pt[0]] for pt in coords[0]]
                   current_poly = Polygon([(pt[0], pt[1]) for pt in coords[0]])
 
-                  # Kiểm tra xem thửa này có đang giao cắt với thửa nào khác trong hệ thống không
                   is_overlapping_admin = False
                   for _, other_r in df.iterrows():
                     if (
@@ -507,11 +495,9 @@ with tab2:
                       except Exception:
                         pass
 
-                  # Nếu chồng lấn -> Tô màu ĐỎ cảnh báo cho cán bộ, nếu bình thường -> Tô màu Xanh/Vàng
                   poly_color = "red" if is_overlapping_admin else "yellow"
                   poly_fill_color = "red" if is_overlapping_admin else "blue"
                   poly_opacity = 0.4 if is_overlapping_admin else 0.3
-
                   status_text = (
                       "⚠️ CẢNH BÁO: CHỒNG LẤN TRANH CHẤP!"
                       if is_overlapping_admin
@@ -556,226 +542,84 @@ with tab2:
           else:
             st.warning("Thửa đất này chưa có thông tin vị trí trên bản đồ.")
 
-      st.markdown("### Xuất dữ liệu phục vụ nội nghiệp")
-
-      col_ex1, col_ex2 = st.columns(2)
-
-      with col_ex1:
-        if st.button("📥 Tạo và Tải xuống File Excel Báo Cáo"):
-          wb = openpyxl.Workbook()
-          ws = wb.active
-          ws.title = "Danh sách hiện trạng đất"
-          ws.sheet_view.showGridLines = True
-
-          ws.merge_cells("A1:Q1")
-          ws["A1"] = (
-              "DANH SÁCH TỔNG HỢP HIỆN TRẠNG CANH TÁC ĐẤT ĐAI CẤP XÃ"
-          ).upper()
-          ws["A1"].font = Font(name="Times New Roman", size=14, bold=True)
-          ws["A1"].alignment = Alignment(horizontal="center", vertical="center")
-
-          headers = [
-              "STT",
-              "Họ và tên chủ sử dụng",
-              "Số điện thoại",
-              "Địa chỉ thường trú",
-              "Thôn / Làng",
-              "Số tờ",
-              "Số thửa",
-              "Địa chỉ thửa đất",
-              "Diện tích (m²)",
-              "Nguồn gốc tự kê khai",
-              "Nhóm hiện trạng",
-              "Tên cây trồng cụ thể",
-              "Tình trạng Giấy chứng nhận",
-              "Kiểu dữ liệu bản đồ",
-              "Link Google Maps",
-              "Ngày kê khai",
-          ]
-          ws.append([])
-          ws.append(headers)
-
-          header_font = Font(
-              name="Times New Roman", size=11, bold=True, color="FFFFFF"
-          )
-          header_fill = PatternFill(
-              start_color="1F4E78", end_color="1F4E78", fill_type="solid"
-          )
-          header_align = Alignment(
-              horizontal="center", vertical="center", wrap_text=True
-          )
-
-          for col_num in range(1, len(headers) + 1):
-            cell = ws.cell(row=3, column=col_num)
-            cell.font = header_font
-            cell.fill = header_fill
-            cell.alignment = header_align
-
-          thin_border = Border(
-              left=Side(style="thin", color="D9D9D9"),
-              right=Side(style="thin", color="D9D9D9"),
-              top=Side(style="thin", color="D9D9D9"),
-              bottom=Side(style="thin", color="D9D9D9"),
-          )
-          data_font = Font(name="Times New Roman", size=11)
-
-          for idx, row in df_hien_thi.reset_index(drop=True).iterrows():
-            lat_val = row["lat"]
-            lon_val = row["lon"]
-            map_link = (
-                f"https://www.google.com/maps?q={lat_val},{lon_val}"
-                if pd.notnull(lat_val) and pd.notnull(lon_val)
-                else "Chưa có vị trí"
-            )
-
-            row_data = [
-                idx + 1,
-                row["ho_ten"],
-                str(row["sdt"]) if pd.notnull(row["sdt"]) else "",
-                str(row["dia_chi_thuong_tru"])
-                if pd.notnull(row["dia_chi_thuong_tru"])
-                else "",
-                str(row["thon_lang"]) if pd.notnull(row["thon_lang"]) else "",
-                str(row["so_to"]) if pd.notnull(row["so_to"]) else "",
-                str(row["so_thua"]) if pd.notnull(row["so_thua"]) else "",
-                str(row["dia_chi_thua_dat"])
-                if pd.notnull(row["dia_chi_thua_dat"])
-                else "",
-                row["dien_tich_khai_bao"],
-                str(row["nguon_goc"]) if pd.notnull(row["nguon_goc"]) else "",
-                row["hien_trang"],
-                row["hien_trang_chi_tiet"]
-                if pd.notnull(row["hien_trang_chi_tiet"])
-                else "",
-                row["tinh_trang_so"],
-                row["geo_type"] if pd.notnull(row["geo_type"]) else "",
-                map_link,
-                str(row["ngay_tao"]),
-            ]
-            ws.append(row_data)
-
-          for row_idx in range(4, 4 + len(df_hien_thi)):
-            for col_idx in range(1, len(headers) + 1):
-              cell = ws.cell(row=row_idx, column=col_idx)
-              cell.font = data_font
-              cell.border = thin_border
-
-              if col_idx in [1, 6, 7, 14, 16]:
-                cell.alignment = Alignment(
-                    horizontal="center", vertical="center"
-                )
-              elif col_idx == 9:
-                cell.alignment = Alignment(horizontal="right", vertical="center")
-                cell.number_format = "#,##0"
-              elif col_idx == 15:
-                cell.alignment = Alignment(
-                    horizontal="center", vertical="center"
-                )
-                cell.font = Font(
-                    name="Times New Roman",
-                    size=10,
-                    color="0563C1",
-                    underline="single",
-                )
-              else:
-                cell.alignment = Alignment(horizontal="left", vertical="center")
-
-          for col in ws.columns:
-            max_len = 0
-            col_letter = openpyxl.utils.get_column_letter(col[0].column)
-            for cell in col:
-              if cell.row > 1:
-                val_str = str(cell.value or "")
-                if len(val_str) > max_len:
-                  max_len = len(val_str)
-            ws.column_dimensions[col_letter].width = max(max_len + 4, 12)
-
-          local_file_name = "Bao_cao_hien_trang_dat_dai_theo_thon.xlsx"
-          wb.save(local_file_name)
-
-          with open(local_file_name, "rb") as f:
-            st.download_button(
-                label="📥 Tải file Excel ngay",
-                data=f,
-                file_name=local_file_name,
-                mime=(
-                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                ),
-            )
-
-      with col_ex2:
-        if st.button("🌍 Tải File Bản Đồ (KML hỗ trợ Vùng & Điểm)"):
-          kml_content = """<?xml version="1.0" encoding="UTF-8"?>
-<kml xmlns="http://www.opengis.net/kml/2.2">
-  <Document>
-    <name>Danh sách Thửa đất theo Thôn</name>
-"""
-          for _, row in df_hien_thi.iterrows():
-            ho_ten_Val = str(row["ho_ten"] or "").strip()
-            thon_val = str(row["thon_lang"] or "").strip()
-            so_to_val = str(row["so_to"] or "").strip()
-            so_thua_val = str(row["so_thua"] or "").strip()
-
-            if so_to_val != "" and so_thua_val != "":
-              name = (
-                  f"[{thon_val}] {ho_ten_Val} - Thửa: {so_thua_val}, Tờ:"
-                  f" {so_to_val}"
-              )
-            else:
-              name = f"[{thon_val}] {ho_ten_Val}"
-
-            desc = (
-                f"Thôn: {thon_val}<br/>Chủ sử dụng:"
-                f" {ho_ten_Val}<br/>SĐT: {row['sdt']}<br/>Diện tích khai"
-                f" báo: {row['dien_tich_khai_bao']} m²<br/>Hiện trạng:"
-                f" {row['hien_trang']} ({row['hien_trang_chi_tiet']})"
-            )
-
-            geo_type = row["geo_type"]
-            geo_coords_str = row["geo_coords"]
-
-            if geo_type == "Polygon" and pd.notnull(geo_coords_str):
-              try:
-                coords_list = json.loads(geo_coords_str)
-                if len(coords_list) > 0:
-                  kml_coords_flat = " ".join(
-                      [f"{pt[0]},{pt[1]},0" for pt in coords_list[0]]
-                  )
-                  kml_content += f"""    <Placemark>
-      <name><![CDATA[{name}]]></name>
-      <description><![CDATA[{desc}]]></description>
-      <Polygon>
-        <outerBoundaryIs>
-          <LinearRing>
-            <coordinates>{kml_coords_flat}</coordinates>
-          </LinearRing>
-        </outerBoundaryIs>
-      </Polygon>
-    </Placemark>
-"""
-              except Exception:
-                pass
-
-            elif pd.notnull(row["lat"]) and pd.notnull(row["lon"]):
-              kml_content += f"""    <Placemark>
-      <name><![CDATA[{name}]]></name>
-      <description><![CDATA[{desc}]]></description>
-      <Point>
-        <coordinates>{row['lon']},{row['lat']},0</coordinates>
-      </Point>
-    </Placemark>
-"""
-          kml_content += """  </Document>
-</kml>"""
-
-          st.download_button(
-              label="📥 Tải file KML mở Google Earth",
-              data=kml_content.encode("utf-8"),
-              file_name="hien_trang_dat_dai_theo_thon.kml",
-              mime="application/vnd.google-earth.kml+xml",
-          )
-
   elif password != "":
     st.error("Sai mật khẩu quản lý! Vui lòng thử lại.")
   else:
     st.info("Vui lòng nhập mật khẩu quản lý để xem danh sách và xuất báo cáo.")
+
+# --- TAB 3: BẢO MẬT - CHỈ DÀNH RIÊNG CHO QUẢN TRỊ TRA CỨU SỔ MỤC KÊ GỐC ---
+with tab3:
+  st.header("📂 Khu vực bảo mật: Tra cứu Sổ mục kê & GCN gốc")
+
+  password_so = st.text_input(
+      "Nhập mật khẩu quản lý để sử dụng tính năng này:",
+      type="password",
+      key="pwd_so_goc",
+  )
+
+  if password_so == ADMIN_PASSWORD:
+    st.success("Xác thực thành công! Cán bộ có quyền truy cập sổ gốc.")
+    st.markdown(
+        "Tải lên file Excel chứa dữ liệu sổ mục kê gốc hoặc sổ cấp GCN của xã"
+        " để tra cứu tức thì."
+    )
+
+    uploaded_so_goc = st.file_uploader(
+        "Tải lên file Excel Sổ mục kê / Sổ GCN gốc của xã:",
+        type=["xlsx", "xls"],
+        key="uploader_so",
+    )
+
+    if uploaded_so_goc is not None:
+      try:
+        df_so_goc = pd.read_excel(uploaded_so_goc)
+        st.success(
+            f"Đã tải lên thành công sổ gốc chứa {len(df_so_goc)} dòng dữ liệu!"
+        )
+
+        st.markdown("### 🔍 Nhập từ khóa để tra cứu:")
+        keyword = st.text_input(
+            "Nhập Họ tên chủ sử dụng, Số thửa, Số tờ hoặc Số GCN cần tìm:",
+            key="input_keyword_so",
+        )
+
+        if keyword.strip() != "":
+          mask = df_so_goc.astype(str).apply(
+              lambda col: col.str.contains(keyword, case=False, na=False)
+          ).any(axis=1)
+          df_ket_qua = df_so_goc[mask]
+
+          st.markdown(
+              f"Kết quả tìm kiếm cho từ khóa: **'{keyword}'** (Tìm thấy"
+              f" {len(df_ket_qua)} kết quả):"
+          )
+          if not df_ket_qua.empty:
+            st.dataframe(df_ket_qua, use_container_width=True)
+          else:
+            st.warning("Không tìm thấy thông tin phù hợp trong sổ mục kê gốc.")
+        else:
+          st.info(
+              "Vui lòng nhập từ khóa vào ô bên trên để tra cứu lịch sử thửa"
+              " đất."
+          )
+
+      except Exception as e:
+        st.error(
+            "Không thể đọc file Excel này. Vui lòng kiểm tra lại định dạng file."
+            f" Chi tiết lỗi: {e}"
+        )
+    else:
+      st.info(
+          "💡 Hướng dẫn: Tải file Excel sổ mục kê hoặc sổ cấp GCN của xã lên"
+          " đây để tra cứu dữ liệu gốc nhanh chóng."
+      )
+
+  elif password_so != "":
+    st.error(
+        "Sai mật khẩu quản lý! Khu vực này chỉ dành cho cán bộ có thẩm quyền."
+    )
+  else:
+    st.warning(
+        "🔒 Vui lòng nhập mật khẩu quản lý để mở khóa tính năng tra cứu sổ mục"
+        " kê gốc."
+    )
