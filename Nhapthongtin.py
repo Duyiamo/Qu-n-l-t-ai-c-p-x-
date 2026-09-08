@@ -60,10 +60,10 @@ def init_db():
 init_db()
 
 st.set_page_config(
-    page_title="Quản lý Hiện trạng Đất đai Cấp Xã", layout="wide"
+    page_title="Quản lý Hiện trạng Đất đai xã Ia Mơ", layout="wide"
 )
 
-st.title("🌾 Hệ thống Thu thập & Quản lý Hiện trạng Đất đai Cấp Xã")
+st.title("🌾 Hệ thống Thu thập & Quản lý Hiện trạng Đất đai tại xã Ia Mơ")
 st.markdown(
     "Ứng dụng hỗ trợ ghi nhận vị trí và ranh giới canh tác của hộ dân theo"
     " từng thôn và kết xuất báo cáo."
