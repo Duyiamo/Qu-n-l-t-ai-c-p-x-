@@ -542,12 +542,231 @@ with tab2:
           else:
             st.warning("Thửa đất này chưa có thông tin vị trí trên bản đồ.")
 
+      st.markdown("### Xuất dữ liệu phục vụ nội nghiệp")
+
+      col_ex1, col_ex2 = st.columns(2)
+
+      with col_ex1:
+        if st.button("📥 Tạo và Tải xuống File Excel Báo Cáo"):
+          wb = openpyxl.Workbook()
+          ws = wb.active
+          ws.title = "Danh sách hiện trạng đất"
+          ws.sheet_view.showGridLines = True
+
+          ws.merge_cells("A1:Q1")
+          ws["A1"] = (
+              "DANH SÁCH TỔNG HỢP HIỆN TRẠNG CANH TÁC ĐẤT ĐAI CẤP XÃ"
+          ).upper()
+          ws["A1"].font = Font(name="Times New Roman", size=14, bold=True)
+          ws["A1"].alignment = Alignment(horizontal="center", vertical="center")
+
+          headers = [
+              "STT",
+              "Họ và tên chủ sử dụng",
+              "Số điện thoại",
+              "Địa chỉ thường trú",
+              "Thôn / Làng",
+              "Số tờ",
+              "Số thửa",
+              "Địa chỉ thửa đất",
+              "Diện tích (m²)",
+              "Nguồn gốc tự kê khai",
+              "Nhóm hiện trạng",
+              "Tên cây trồng cụ thể",
+              "Tình trạng Giấy chứng nhận",
+              "Kiểu dữ liệu bản đồ",
+              "Link Google Maps",
+              "Ngày kê khai",
+          ]
+          ws.append([])
+          ws.append(headers)
+
+          header_font = Font(
+              name="Times New Roman", size=11, bold=True, color="FFFFFF"
+          )
+          header_fill = PatternFill(
+              start_color="1F4E78", end_color="1F4E78", fill_type="solid"
+          )
+          header_align = Alignment(
+              horizontal="center", vertical="center", wrap_text=True
+          )
+
+          for col_num in range(1, len(headers) + 1):
+            cell = ws.cell(row=3, column=col_num)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = header_align
+
+          thin_border = Border(
+              left=Side(style="thin", color="D9D9D9"),
+              right=Side(style="thin", color="D9D9D9"),
+              top=Side(style="thin", color="D9D9D9"),
+              bottom=Side(style="thin", color="D9D9D9"),
+          )
+          data_font = Font(name="Times New Roman", size=11)
+
+          for idx, row in df_hien_thi.reset_index(drop=True).iterrows():
+            lat_val = row["lat"]
+            lon_val = row["lon"]
+            map_link = (
+                f"https://www.google.com/maps?q={lat_val},{lon_val}"
+                if pd.notnull(lat_val) and pd.notnull(lon_val)
+                else "Chưa có vị trí"
+            )
+
+            row_data = [
+                idx + 1,
+                row["ho_ten"],
+                str(row["sdt"]) if pd.notnull(row["sdt"]) else "",
+                str(row["dia_chi_thuong_tru"])
+                if pd.notnull(row["dia_chi_thuong_tru"])
+                else "",
+                str(row["thon_lang"]) if pd.notnull(row["thon_lang"]) else "",
+                str(row["so_to"]) if pd.notnull(row["so_to"]) else "",
+                str(row["so_thua"]) if pd.notnull(row["so_thua"]) else "",
+                str(row["dia_chi_thua_dat"])
+                if pd.notnull(row["dia_chi_thua_dat"])
+                else "",
+                row["dien_tich_khai_bao"],
+                str(row["nguon_goc"]) if pd.notnull(row["nguon_goc"]) else "",
+                row["hien_trang"],
+                row["hien_trang_chi_tiet"]
+                if pd.notnull(row["hien_trang_chi_tiet"])
+                else "",
+                row["tinh_trang_so"],
+                row["geo_type"] if pd.notnull(row["geo_type"]) else "",
+                map_link,
+                str(row["ngay_tao"]),
+            ]
+            ws.append(row_data)
+
+          for row_idx in range(4, 4 + len(df_hien_thi)):
+            for col_idx in range(1, len(headers) + 1):
+              cell = ws.cell(row=row_idx, column=col_idx)
+              cell.font = data_font
+              cell.border = thin_border
+
+              if col_idx in [1, 6, 7, 14, 16]:
+                cell.alignment = Alignment(
+                    horizontal="center", vertical="center"
+                )
+              elif col_idx == 9:
+                cell.alignment = Alignment(horizontal="right", vertical="center")
+                cell.number_format = "#,##0"
+              elif col_idx == 15:
+                cell.alignment = Alignment(
+                    horizontal="center", vertical="center"
+                )
+                cell.font = Font(
+                    name="Times New Roman",
+                    size=10,
+                    color="0563C1",
+                    underline="single",
+                )
+              else:
+                cell.alignment = Alignment(horizontal="left", vertical="center")
+
+          for col in ws.columns:
+            max_len = 0
+            col_letter = openpyxl.utils.get_column_letter(col[0].column)
+            for cell in col:
+              if cell.row > 1:
+                val_str = str(cell.value or "")
+                if len(val_str) > max_len:
+                  max_len = len(val_str)
+            ws.column_dimensions[col_letter].width = max(max_len + 4, 12)
+
+          local_file_name = "Bao_cao_hien_trang_dat_dai_theo_thon.xlsx"
+          wb.save(local_file_name)
+
+          with open(local_file_name, "rb") as f:
+            st.download_button(
+                label="📥 Tải file Excel ngay",
+                data=f,
+                file_name=local_file_name,
+                mime=(
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                ),
+            )
+
+      with col_ex2:
+        if st.button("🌍 Tải File Bản Đồ (KML hỗ trợ Vùng & Điểm)"):
+          kml_content = """<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>Danh sách Thửa đất theo Thôn</name>
+"""
+          for _, row in df_hien_thi.iterrows():
+            ho_ten_Val = str(row["ho_ten"] or "").strip()
+            thon_val = str(row["thon_lang"] or "").strip()
+            so_to_val = str(row["so_to"] or "").strip()
+            so_thua_val = str(row["so_thua"] or "").strip()
+
+            if so_to_val != "" and so_thua_val != "":
+              name = (
+                  f"[{thon_val}] {ho_ten_Val} - Thửa: {so_thua_val}, Tờ:"
+                  f" {so_to_val}"
+              )
+            else:
+              name = f"[{thon_val}] {ho_ten_Val}"
+
+            desc = (
+                f"Thôn: {thon_val}<br/>Chủ sử dụng:"
+                f" {ho_ten_Val}<br/>SĐT: {row['sdt']}<br/>Diện tích khai"
+                f" báo: {row['dien_tich_khai_bao']} m²<br/>Hiện trạng:"
+                f" {row['hien_trang']} ({row['hien_trang_chi_tiet']})"
+            )
+
+            geo_type = row["geo_type"]
+            geo_coords_str = row["geo_coords"]
+
+            if geo_type == "Polygon" and pd.notnull(geo_coords_str):
+              try:
+                coords_list = json.loads(geo_coords_str)
+                if len(coords_list) > 0:
+                  kml_coords_flat = " ".join(
+                      [f"{pt[0]},{pt[1]},0" for pt in coords_list[0]]
+                  )
+                  kml_content += f"""    <Placemark>
+      <name><![CDATA[{name}]]></name>
+      <description><![CDATA[{desc}]]></description>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>{kml_coords_flat}</coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+"""
+              except Exception:
+                pass
+
+            elif pd.notnull(row["lat"]) and pd.notnull(row["lon"]):
+              kml_content += f"""    <Placemark>
+      <name><![CDATA[{name}]]></name>
+      <description><![CDATA[{desc}]]></description>
+      <Point>
+        <coordinates>{row['lon']},{row['lat']},0</coordinates>
+      </Point>
+    </Placemark>
+"""
+          kml_content += """  </Document>
+</kml>"""
+
+          st.download_button(
+              label="📥 Tải file KML mở Google Earth",
+              data=kml_content.encode("utf-8"),
+              file_name="hien_trang_dat_dai_theo_thon.kml",
+              mime="application/vnd.google-earth.kml+xml",
+          )
+
   elif password != "":
     st.error("Sai mật khẩu quản lý! Vui lòng thử lại.")
   else:
     st.info("Vui lòng nhập mật khẩu quản lý để xem danh sách và xuất báo cáo.")
 
-# --- TAB 3: BẢO MẬT - TRA CỨU SỔ MỤC KÊ GỐC (TÁCH 3 Ô TÌM KIẾM CHUẨN XÁC) ---
+# --- TAB 3: BẢO MẬT - TRA CỨU SỔ MỤC KÊ GỐC (3 Ô TÌM KIẾM ĐỘC LẬP CHUẨN XÁC) ---
 with tab3:
   st.header("📂 Khu vực bảo mật: Tra cứu Sổ mục kê & GCN gốc")
 
@@ -611,7 +830,7 @@ with tab3:
           ]
 
         st.markdown(
-            "### 🔍 Bộ lọc tra cứu thông tin (Gõ từ khóa hoặc nhập số):"
+            "### 🔍 Bộ lọc tra cứu thông tin (Tìm theo tên hoặc số tờ/thửa):"
         )
 
         col_tc1, col_tc2, col_tc3 = st.columns(3)
@@ -636,14 +855,14 @@ with tab3:
 
         df_ket_qua = df_so_goc.copy()
 
-        # Làm sạch dữ liệu trong dataframe để tìm kiếm chính xác không bị lỗi
+        # Làm sạch dữ liệu để tránh lỗi tìm kiếm
         for col in df_ket_qua.columns:
           df_ket_qua[col] = df_ket_qua[col].astype(str).str.strip()
           df_ket_qua[col] = df_ket_qua[col].replace(
               {"nan": "", "None": "", "0.0": "0"}
           )
 
-        # 1. Lọc theo Tên chủ sử dụng
+        # 1. Lọc theo Tên chủ sử dụng (Xử lý thông minh quét toàn bộ dòng nếu không khớp tên cột)
         if kw_ten.strip() != "":
           col_name_match = None
           for col in df_ket_qua.columns:
