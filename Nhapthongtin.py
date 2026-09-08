@@ -1,8 +1,9 @@
+import io
 import json
+import os
 import sqlite3
 from datetime import datetime
-import io
-import os
+import zipfile
 import folium
 from folium.plugins import Draw, LocateControl
 import geopandas as gpd
@@ -85,7 +86,7 @@ with tab1:
           "Địa chỉ thường trú (Thôn/Xóm, Xã...)"
       )
       thon_lang = st.text_input(
-          "Thôn / Làng tọa lạc thửa đất * (Ví dụ: Làng Hnáp, Làng Klăh...)"
+          "Thôn / Làng tọa lạc thửa đất * (Ví dụ: Làng Hnáp, Thôn 1...)"
       )
       so_to = st.text_input("Số tờ bản đồ (nếu biết)")
       so_thua = st.text_input("Số thửa đất (nếu biết)")
@@ -274,7 +275,7 @@ with tab1:
           conn.close()
 
 with tab2:
-  st.header("Khu vực Quản trị dành cho Cán bộ địa chính xã Ia Mơ")
+  st.header("Khu vực Quản trị dành cho Cán bộ địa chính")
 
   password = st.text_input(
       "Nhập mật khẩu quản lý để tiếp tục:", type="password"
@@ -337,23 +338,42 @@ with tab2:
           use_container_width=True,
       )
 
-      # TÍNH NĂNG TẢI FILE KML ĐỊA CHÍNH ĐỂ ĐỐI SOÁT
-      st.markdown("### 🗺️ Bản đồ nền địa chính (Tải file KML đối soát)")
-      uploaded_kml = st.file_uploader(
-          "Tải lên file KML bản đồ địa chính/quy hoạch của xã:", type=["kml"]
+      # TÍNH NĂNG TẢI FILE KML HOẶC KMZ ĐỊA CHÍNH ĐỂ ĐỐI SOÁT
+      st.markdown("### 🗺️ Bản đồ nền địa chính (Tải file KML / KMZ đối soát)")
+      uploaded_map_file = st.file_uploader(
+          "Tải lên file KML hoặc KMZ bản đồ địa chính/quy hoạch của xã:",
+          type=["kml", "kmz"],
       )
       gdf_kml = None
-      if uploaded_kml is not None:
+      if uploaded_map_file is not None:
         try:
-          gdf_kml = gpd.read_file(uploaded_kml)
-          st.success(
-              f"Đã đọc thành công file KML chứa {len(gdf_kml)} đối tượng bản"
-              " đồ!"
-          )
+          file_extension = uploaded_map_file.name.split(".")[-1].lower()
+          if file_extension == "kmz":
+            # Xử lý giải nén ngầm file KMZ để đọc file KML bên trong
+            with zipfile.ZipFile(uploaded_map_file, "r") as z:
+              kml_filenames = [
+                  f for f in z.namelist() if f.endswith(".kml")
+              ]
+              if kml_filenames:
+                with z.open(kml_filenames[0]) as kml_file:
+                  gdf_kml = gpd.read_file(kml_file)
+              else:
+                st.error(
+                    "Không tìm thấy file KML hợp lệ bên trong gói nén KMZ này."
+                )
+          else:
+            # Đọc trực tiếp file KML thông thường
+            gdf_kml = gpd.read_file(uploaded_map_file)
+
+          if gdf_kml is not None:
+            st.success(
+                f"Đã đọc thành công bản đồ chứa {len(gdf_kml)} đối tượng ranh"
+                " giới!"
+            )
         except Exception as e:
           st.error(
-              "Không thể đọc file KML này. Vui lòng kiểm tra lại định dạng file."
-              f" Chi tiết: {e}"
+              "Không thể đọc file bản đồ này. Vui lòng kiểm tra lại định dạng"
+              f" file. Chi tiết: {e}"
           )
 
       st.markdown("### 🔍 Kiểm tra nhanh vị trí / ranh giới từng thửa đất")
@@ -395,7 +415,7 @@ with tab2:
                 control=True,
             ).add_to(m_admin)
 
-            # Phủ lớp KML địa chính lên bản đồ admin nếu đã tải lên
+            # Phủ lớp KML/KMZ địa chính lên bản đồ admin nếu đã tải lên
             if gdf_kml is not None:
               try:
                 for _, geom_row in gdf_kml.iterrows():
