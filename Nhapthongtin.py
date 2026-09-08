@@ -348,28 +348,29 @@ with tab2:
       if uploaded_map_file is not None:
         try:
           file_extension = uploaded_map_file.name.split(".")[-1].lower()
+          bytes_data = uploaded_map_file.getvalue()
+
           if file_extension == "kmz":
-            # Xử lý giải nén ngầm file KMZ để đọc file KML bên trong
-            with zipfile.ZipFile(uploaded_map_file, "r") as z:
+            with zipfile.ZipFile(io.BytesIO(bytes_data), "r") as z:
               kml_filenames = [
                   f for f in z.namelist() if f.endswith(".kml")
               ]
               if kml_filenames:
                 with z.open(kml_filenames[0]) as kml_file:
-                  gdf_kml = gpd.read_file(kml_file)
+                  kml_bytes = kml_file.read()
+                  gdf_kml = gpd.read_file(io.BytesIO(kml_bytes), driver="KML")
               else:
-                st.error(
-                    "Không tìm thấy file KML hợp lệ bên trong gói nén KMZ này."
-                )
+                st.error("Không tìm thấy file KML bên trong gói nén KMZ này.")
           else:
-            # Đọc trực tiếp file KML thông thường
-            gdf_kml = gpd.read_file(uploaded_map_file)
+            gdf_kml = gpd.read_file(io.BytesIO(bytes_data), driver="KML")
 
-          if gdf_kml is not None:
+          if gdf_kml is not None and not gdf_kml.empty:
             st.success(
                 f"Đã đọc thành công bản đồ chứa {len(gdf_kml)} đối tượng ranh"
                 " giới!"
             )
+          else:
+            st.warning("File bản đồ không chứa đối tượng hình học nào.")
         except Exception as e:
           st.error(
               "Không thể đọc file bản đồ này. Vui lòng kiểm tra lại định dạng"
