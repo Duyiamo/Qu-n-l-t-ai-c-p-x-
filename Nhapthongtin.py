@@ -94,13 +94,11 @@ with tab1:
       dia_chi_thuong_tru = st.text_input(
           "Địa chỉ thường trú (Thôn/Xóm, Xã...)"
       )
-      # Đã đổi tên nhãn thành Địa chỉ thửa đất (chọn 1 trong 4 thôn)
-      thon_lang = st.selectbox("Địa chỉ thửa đất *", DANH_SACH_THON_XA)
+      thon_lang = st.selectbox("Địa chỉ thửa đất (Thôn) *", DANH_SACH_THON_XA)
       so_to = st.text_input("Số tờ bản đồ (nếu biết)")
       so_thua = st.text_input("Số thửa đất (nếu biết)")
 
     with col2:
-      # Đã bỏ ô nhập text mô tả vị trí cũ, chuyển các trường còn lại lên đây cho cân đối
       dien_tich = st.number_input(
           "Diện tích tự khai báo (m²) *", min_value=0.0, value=0.0, step=10.0
       )
@@ -132,9 +130,11 @@ with tab1:
 
     st.markdown("---")
     st.markdown(
-        "**Xác định vị trí trên bản đồ vệ tinh:** Bạn có thể **chấm 1 điểm"
-        " (Marker)** vào giữa thửa đất hoặc dùng công cụ **vẽ đa giác/hình chữ"
-        " nhật (Polygon/Rectangle)** để khoanh trọn ranh giới khu đất."
+        "**🗺️ Hướng dẫn thao tác trên Điện thoại/Máy tính:**\n"
+        "- **Di chuyển bản đồ:** Dùng **2 ngón tay** để lướt/trượt hoặc thu"
+        " phóng bản đồ.\n"
+        "- **Chấm điểm / Khoanh vùng:** Dùng **1 ngón tay** chạm vào công cụ"
+        " vẽ ở góc bản đồ rồi chấm lên vị trí thửa đất."
     )
 
     m = folium.Map(location=[13.494115, 107.748732], zoom_start=15)
@@ -305,7 +305,6 @@ with tab1:
             st.error(warning_msg)
           else:
             ngay_hien_tai = datetime.now().strftime("%Y-%m-%d")
-            # Gán giá trị dia_chi_thua_dat bằng chính thon_lang để lưu vào CSDL đồng bộ
             dia_chi_thua_dat_val = thon_lang
             cursor.execute(
                 """
@@ -555,7 +554,7 @@ with tab2:
 
           ws.merge_cells("A1:Q1")
           ws["A1"] = (
-              "DANH SÁCH TỔNG HỢP HIỆN TRẠNG CANH TÁC ĐẤT ĐAI CẤP Xã"
+              "DANH SÁCH TỔNG HỢP HIỆN TRẠNG CANH TÁC ĐẤT ĐAI CẤP XÃ"
           ).upper()
           ws["A1"].font = Font(name="Times New Roman", size=14, bold=True)
           ws["A1"].alignment = Alignment(horizontal="center", vertical="center")
